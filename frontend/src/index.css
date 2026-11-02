@@ -10,11 +10,13 @@
   --sidebar: #0e1324;
   --topbar: rgba(12, 16, 32, .92);
   --surface: #121a2d;
+  --surface-raised: #18233b;
   --surface-hover: #1a2540;
   --border: #263148;
   --text: #edf1ff;
   --muted: #8e9ab5;
   --accent: #91a5ff;
+  --accent-strong: #768cff;
   --accent-soft: rgba(111, 137, 255, .10);
   --accent-border: rgba(111, 137, 255, .3);
   --track: #27334b;
@@ -32,11 +34,13 @@
   --sidebar: #ffffff;
   --topbar: rgba(255, 255, 255, .93);
   --surface: #ffffff;
+  --surface-raised: #f8f9ff;
   --surface-hover: #f0f3ff;
   --border: #e2e7f1;
   --text: #202943;
   --muted: #748099;
   --accent: #526ee7;
+  --accent-strong: #435ed8;
   --accent-soft: #eef1ff;
   --accent-border: #d3dcff;
   --track: #e8ecf5;

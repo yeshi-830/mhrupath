@@ -44,6 +44,14 @@ function getTodayKey() {
   return getDateKey(new Date());
 }
 
+function getTodayDisplay() {
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  }).format(new Date());
+}
+
 function getWeekDates(date) {
   const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7);
@@ -129,6 +137,7 @@ function App() {
   const [tasks, setTasks] = useState(() => readSaved('tasks', initialTasks));
   const [activityDates, setActivityDates] = useState(() => readSaved('activity-dates', []));
   const [todayKey, setTodayKey] = useState(getTodayKey);
+  const [todayDisplay, setTodayDisplay] = useState(getTodayDisplay);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('All');
   const [activeChallenge, setActiveChallenge] = useState(null);
@@ -138,6 +147,10 @@ function App() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [profileName, setProfileName] = useState(() => readSaved('name', 'Developer'));
   const [newTask, setNewTask] = useState('');
+  const [showProjectForm, setShowProjectForm] = useState(false);
+  const [newProjectTitle, setNewProjectTitle] = useState('');
+  const [newProjectDescription, setNewProjectDescription] = useState('');
+  const [newProjectStack, setNewProjectStack] = useState('');
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -151,7 +164,10 @@ function App() {
   useEffect(() => saveValue('activity-dates', activityDates), [activityDates]);
   useEffect(() => saveValue('name', profileName), [profileName]);
   useEffect(() => {
-    const intervalId = window.setInterval(() => setTodayKey(getTodayKey()), 60_000);
+    const intervalId = window.setInterval(() => {
+      setTodayKey(getTodayKey());
+      setTodayDisplay(getTodayDisplay());
+    }, 60_000);
     return () => window.clearInterval(intervalId);
   }, []);
 
@@ -241,6 +257,29 @@ function App() {
     setNewTask('');
   }
 
+  function addProject(event) {
+    event.preventDefault();
+    const title = newProjectTitle.trim();
+    if (!title) return;
+
+    const colors = ['blue', 'green', 'purple', 'orange'];
+    const stack = newProjectStack.split(',').map((item) => item.trim()).filter(Boolean);
+    setProjects((previous) => [...previous, {
+      id: Date.now(),
+      title,
+      description: newProjectDescription.trim() || 'A new project in your portfolio.',
+      stack,
+      status: 'Not started',
+      progress: 0,
+      icon: '✦',
+      color: colors[projects.length % colors.length],
+    }]);
+    setNewProjectTitle('');
+    setNewProjectDescription('');
+    setNewProjectStack('');
+    setShowProjectForm(false);
+  }
+
   function updateProjectStatus(project) {
     const next = project.status === 'Not started'
       ? 'In progress'
@@ -253,29 +292,37 @@ function App() {
         ? { ...item, status: next, progress: next === 'Completed' ? 100 : next === 'In progress' ? Math.max(item.progress, 10) : 0 }
         : item
     ));
+    if (next === 'Completed') recordActivity();
   }
 
   function renderDashboard() {
+    const nextCourse = courses
+      .filter((course) => course.progress < 100)
+      .sort((first, second) => second.progress - first.progress)[0];
+    const focusTasks = [...tasks]
+      .sort((first, second) => Number(first.done) - Number(second.done))
+      .slice(0, 4);
+
     return (
       <>
         <section className="welcome-banner">
           <div className="welcome-content">
-            <span className="welcome-pill"><span className="status-dot" /> YOUR LEARNING JOURNEY</span>
-            <h2>Build your future,<br /><span>one line at a time.</span></h2>
-            <p>Every expert was once a beginner. Keep learning, keep building, and make today count.</p>
-            <button className="primary-button" onClick={() => navigate('Learning Paths')}>Continue learning <span>→</span></button>
+            <span className="welcome-pill"><span className="status-dot" /> YOUR WORKSPACE</span>
+            <h2>Your next step<br /><span>starts right here.</span></h2>
+            <p>{nextCourse ? `Pick up ${nextCourse.name} and keep your learning momentum going.` : 'You have completed every learning path. Start a project and put your skills to work.'}</p>
+            {nextCourse
+              ? <button className="primary-button" onClick={() => completeLesson(nextCourse.id)}>Continue {nextCourse.name} <span>→</span></button>
+              : <button className="primary-button" onClick={() => navigate('My Projects')}>Explore projects <span>→</span></button>}
           </div>
           <div className="welcome-art" aria-hidden="true">
             <div className="art-orbit orbit-one" />
             <div className="art-orbit orbit-two" />
-            <div className="art-code">
-              <span className="code-dots">● ● ●</span>
-              <p><span>const</span> future = {'{'}</p>
-              <p className="code-indent">skills: <b>'growing'</b>,</p>
-              <p className="code-indent">success: <b>true</b>,</p>
-              <p className="code-indent">keepGoing: <b>true</b></p>
-              <p>{'}'};</p>
-              <p className="code-success">✓ Ready to build</p>
+            <div className="resume-card">
+              <span className="resume-label">UP NEXT</span>
+              <span className={`resume-icon ${nextCourse?.color || 'blue'}`}>{nextCourse?.icon || '✓'}</span>
+              <strong>{nextCourse?.name || 'Learning paths complete'}</strong>
+              <span className="resume-meta">{nextCourse ? `${nextCourse.lessons} lessons · ${nextCourse.progress}% complete` : 'Ready for your next project'}</span>
+              {nextCourse && <ProgressBar value={nextCourse.progress} color={nextCourse.color} />}
             </div>
           </div>
           <div className="banner-decoration" />
@@ -301,10 +348,10 @@ function App() {
 
         <div className="dashboard-lower">
           <section className="panel">
-            <SectionHeading title="Today's focus" description={`${completedTasks} of ${tasks.length} tasks completed`} action="View all" onAction={() => navigate('My Progress')} />
-            <ProgressBar value={tasks.length ? Math.round(completedTasks / tasks.length * 100) : 0} />
+            <SectionHeading eyebrow="STAY ON TRACK" title="Today's focus" description={`${completedTasks} of ${tasks.length} tasks completed`} action="All tasks" onAction={() => navigate('My Progress')} />
+            <div className="focus-progress"><ProgressBar value={tasks.length ? Math.round(completedTasks / tasks.length * 100) : 0} /><span>{tasks.length ? Math.round(completedTasks / tasks.length * 100) : 0}%</span></div>
             <div className="task-list">
-              {tasks.slice(0, 4).map((task) => (
+              {focusTasks.map((task) => (
                 <label className={`task-item ${task.done ? 'task-done' : ''}`} key={task.id}>
                   <input type="checkbox" checked={task.done} onChange={() => toggleTask(task.id)} />
                   <span className="custom-check">{task.done ? '✓' : ''}</span>
@@ -312,10 +359,15 @@ function App() {
                 </label>
               ))}
             </div>
+            {!tasks.length && <p className="muted small-text">Add a small goal to get your day started.</p>}
+            <form className="quick-task-form" onSubmit={addTask}>
+              <input value={newTask} onChange={(event) => setNewTask(event.target.value)} placeholder="Add a quick task..." aria-label="New focus task" />
+              <button type="submit" aria-label="Add focus task">+</button>
+            </form>
           </section>
 
           <section className="panel challenge-panel">
-            <SectionHeading title="Daily challenge" description="A little practice goes a long way." action="Explore" onAction={() => navigate('Challenges')} />
+            <SectionHeading eyebrow="QUICK PRACTICE" title="Daily challenge" description="A little practice goes a long way." action="Explore" onAction={() => navigate('Challenges')} />
             {challenges.filter((item) => !item.completed).slice(0, 2).map((item) => (
               <button className="challenge-row" key={item.id} onClick={() => startChallenge(item)}>
                 <span className="challenge-symbol">{'</>'}</span>
@@ -327,12 +379,7 @@ function App() {
           </section>
         </div>
 
-        <section className="content-section">
-          <SectionHeading eyebrow="LEARN BY DOING" title="Your projects" description="Turn what you learn into something real." action="All projects" onAction={() => navigate('My Projects')} />
-          <div className="project-grid">
-            {projects.slice(0, 3).map((project) => <ProjectCard key={project.id} project={project} onUpdate={() => updateProjectStatus(project)} />)}
-          </div>
-        </section>
+        <ProjectWorkspace projects={projects} onUpdate={updateProjectStatus} onViewAll={() => navigate('My Projects')} />
       </>
     );
   }
@@ -400,7 +447,28 @@ function App() {
   function renderProjects() {
     return (
       <section className="content-section page-section">
-        <SectionHeading eyebrow="BUILD YOUR PORTFOLIO" title="My projects" description="Apply your knowledge by building useful applications." />
+        <SectionHeading eyebrow="BUILD YOUR PORTFOLIO" title="My projects" description="Apply your knowledge by building useful applications." action={showProjectForm ? 'Cancel' : 'New project'} onAction={() => setShowProjectForm(!showProjectForm)} />
+        {showProjectForm && (
+          <form className="new-project-form panel" onSubmit={addProject}>
+            <div className="new-project-form-heading"><span className="eyebrow">START SOMETHING NEW</span><h3>Create a project</h3></div>
+            <label>
+              <span>Project name</span>
+              <input autoFocus required maxLength={70} value={newProjectTitle} onChange={(event) => setNewProjectTitle(event.target.value)} placeholder="e.g. Habit tracker" />
+            </label>
+            <label>
+              <span>What are you building?</span>
+              <input maxLength={160} value={newProjectDescription} onChange={(event) => setNewProjectDescription(event.target.value)} placeholder="A short description of your idea" />
+            </label>
+            <label>
+              <span>Tech stack <small>Separate with commas</small></span>
+              <input maxLength={100} value={newProjectStack} onChange={(event) => setNewProjectStack(event.target.value)} placeholder="React, Node.js, CSS" />
+            </label>
+            <div className="new-project-form-actions">
+              <button className="secondary-button" type="button" onClick={() => setShowProjectForm(false)}>Cancel</button>
+              <button className="primary-button" type="submit">Create project <span>→</span></button>
+            </div>
+          </form>
+        )}
         <div className="project-grid project-grid-wide">
           {filteredProjects.map((project) => <ProjectCard key={project.id} project={project} onUpdate={() => updateProjectStatus(project)} />)}
         </div>
@@ -491,7 +559,7 @@ function App() {
         </header>
 
         <div className="page-content">
-          <div className="page-title-row"><div><p className="eyebrow">MONDAY · YOUR NEXT CHAPTER STARTS HERE</p><h1>{page === 'Dashboard' ? <>Good day, <span>{profileName || 'Developer'}</span> <span className="wave">✦</span></> : page}</h1><p className="muted">{pageDescriptions[page]}</p></div><div className="date-chip">◷ &nbsp; Keep learning today</div></div>
+          <div className="page-title-row"><div><p className="eyebrow">{page === 'Dashboard' ? todayDisplay.toUpperCase() : 'YOUR DEVELOPER JOURNEY'}</p><h1>{page === 'Dashboard' ? <>Good day, <span>{profileName || 'Developer'}</span> <span className="wave">✦</span></> : page}</h1><p className="muted">{pageDescriptions[page]}</p></div><div className="date-chip">◷ &nbsp; {todayDisplay}</div></div>
 
           {page === 'Dashboard' && renderDashboard()}
           {page === 'Learning Paths' && renderLearning()}
@@ -511,6 +579,59 @@ function App() {
 
 function StatCard({ icon, label, value, note, color }) {
   return <article className="stat-card"><div className={`stat-icon ${color}`}>{icon}</div><p className="stat-label">{label}</p><div className="stat-value">{value}</div><p className="stat-note"><span>↗</span> {note}</p></article>;
+}
+
+function ProjectWorkspace({ projects, onUpdate, onViewAll }) {
+  const activeCount = projects.filter((project) => project.status === 'In progress').length;
+  const completedCount = projects.filter((project) => project.status === 'Completed').length;
+  const averageProgress = projects.length
+    ? Math.round(projects.reduce((total, project) => total + project.progress, 0) / projects.length)
+    : 0;
+
+  return (
+    <section className="project-workspace content-section">
+      <SectionHeading
+        eyebrow="BUILD & SHIP"
+        title="Project pipeline"
+        description="A clear view of what you're building and what comes next."
+        action="Manage projects"
+        onAction={onViewAll}
+      />
+      <div className="pipeline-summary">
+        <div><span className="pipeline-stat-label">Total projects</span><strong>{projects.length}</strong></div>
+        <div><span className="pipeline-stat-label">In progress</span><strong>{activeCount}</strong></div>
+        <div><span className="pipeline-stat-label">Completed</span><strong>{completedCount}</strong></div>
+        <div className="pipeline-progress"><span className="pipeline-stat-label">Portfolio progress</span><strong>{averageProgress}%</strong><ProgressBar value={averageProgress} /></div>
+      </div>
+      {projects.length ? (
+        <div className="pipeline-list">
+          {projects.slice(0, 4).map((project) => (
+            <article className="pipeline-row" key={project.id}>
+              <span className={`pipeline-project-icon ${project.color}`}>{project.icon}</span>
+              <div className="pipeline-project-info">
+                <strong>{project.title}</strong>
+                <span>{project.stack.length ? project.stack.join(' · ') : 'Add a tech stack'}</span>
+              </div>
+              <div className="pipeline-project-progress">
+                <div><span>{project.status}</span><strong>{project.progress}%</strong></div>
+                <ProgressBar value={project.progress} color={project.color} />
+              </div>
+              <button className="pipeline-action" onClick={() => onUpdate(project)}>
+                {project.status === 'Not started' ? 'Start' : project.status === 'In progress' ? 'Complete' : 'Restart'}
+                <span aria-hidden="true">→</span>
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="pipeline-empty">
+          <strong>Your project pipeline is ready.</strong>
+          <p className="muted">Create a project to start turning what you learn into something real.</p>
+          <button className="text-button" onClick={onViewAll}>Create your first project →</button>
+        </div>
+      )}
+    </section>
+  );
 }
 
 function WeeklyActivity({ activityDates, todayKey }) {
