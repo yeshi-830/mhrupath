@@ -701,6 +701,96 @@
   color: #52d8a7;
 }
 
+.weekly-activity {
+  display: grid;
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+  align-items: center;
+  gap: 24px;
+  padding: 18px 20px;
+  margin: -12px 0 32px;
+  border: 1px solid var(--accent-border);
+  border-radius: 12px;
+  background: linear-gradient(110deg, var(--accent-soft), var(--surface) 62%);
+}
+
+.weekly-activity-copy {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+}
+
+.weekly-activity-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 43px;
+  height: 43px;
+  border: 1px solid var(--accent-border);
+  border-radius: 12px;
+  color: var(--accent);
+  background: var(--surface);
+  font-size: 19px;
+}
+
+.weekly-activity .eyebrow {
+  margin-bottom: 5px;
+}
+
+.weekly-activity h2 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: -.3px;
+}
+
+.weekly-activity-copy .muted {
+  margin: 5px 0 0;
+  font-size: 10px;
+}
+
+.week-activity {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.week-day {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.week-day-mark {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: transparent;
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.week-day-active .week-day-mark {
+  border-color: transparent;
+  color: white;
+  background: linear-gradient(145deg, #32bc93, #53d5a5);
+}
+
+.week-day-today {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.week-day-today .week-day-mark {
+  outline: 2px solid var(--accent-border);
+  outline-offset: 2px;
+}
+
 .content-section {
   margin: 0 0 32px;
 }
@@ -1742,6 +1832,22 @@
   .stats-grid {
     gap: 10px;
     margin: 14px 0 27px;
+  }
+
+  .weekly-activity {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 16px;
+    margin-top: -7px;
+  }
+
+  .week-activity {
+    gap: 4px;
+  }
+
+  .week-day-mark {
+    width: 28px;
+    height: 28px;
   }
 
   .stat-card {

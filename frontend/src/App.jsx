@@ -31,6 +31,52 @@ const initialTasks = [
   { id: 4, title: 'Review yesterday’s notes', detail: 'Revision · 10 min', done: true },
 ];
 
+const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function getDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getTodayKey() {
+  return getDateKey(new Date());
+}
+
+function getWeekDates(date) {
+  const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7);
+  return weekdays.map((label, index) => {
+    const day = new Date(monday);
+    day.setDate(monday.getDate() + index);
+    return { label, date: day, key: getDateKey(day) };
+  });
+}
+
+function getWeekDatesForKey(dateKey) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return getWeekDates(new Date(year, month - 1, day));
+}
+
+function getPreviousDateKey(dateKey) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return getDateKey(new Date(year, month - 1, day - 1));
+}
+
+function getActivityStreak(activityDates, todayKey) {
+  const activeDates = new Set(activityDates);
+  let dateKey = activeDates.has(todayKey) ? todayKey : getPreviousDateKey(todayKey);
+  let streak = 0;
+
+  while (activeDates.has(dateKey)) {
+    streak += 1;
+    dateKey = getPreviousDateKey(dateKey);
+  }
+
+  return streak;
+}
+
 const navGroups = [
   { label: 'WORKSPACE', items: [{ id: 'Dashboard', icon: '▦' }, { id: 'Learning Paths', icon: '◫' }, { id: 'Challenges', icon: '⌘' }, { id: 'My Projects', icon: '▣' }] },
   { label: 'YOUR JOURNEY', items: [{ id: 'My Progress', icon: '▥' }, { id: 'Leaderboard', icon: '♜' }, { id: 'Community', icon: '◎' }] },
@@ -81,6 +127,8 @@ function App() {
   const [challenges, setChallenges] = useState(() => readSaved('challenges', initialChallenges));
   const [projects, setProjects] = useState(() => readSaved('projects', initialProjects));
   const [tasks, setTasks] = useState(() => readSaved('tasks', initialTasks));
+  const [activityDates, setActivityDates] = useState(() => readSaved('activity-dates', []));
+  const [todayKey, setTodayKey] = useState(getTodayKey);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('All');
   const [activeChallenge, setActiveChallenge] = useState(null);
@@ -100,7 +148,12 @@ function App() {
   useEffect(() => saveValue('challenges', challenges), [challenges]);
   useEffect(() => saveValue('projects', projects), [projects]);
   useEffect(() => saveValue('tasks', tasks), [tasks]);
+  useEffect(() => saveValue('activity-dates', activityDates), [activityDates]);
   useEffect(() => saveValue('name', profileName), [profileName]);
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setTodayKey(getTodayKey()), 60_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const completedChallenges = challenges.filter((item) => item.completed).length;
   const completedTasks = tasks.filter((task) => task.done).length;
@@ -132,10 +185,20 @@ function App() {
   }
 
   function toggleTask(id) {
+    const task = tasks.find((item) => item.id === id);
+    if (task && !task.done) recordActivity();
     setTasks((previous) => previous.map((task) => task.id === id ? { ...task, done: !task.done } : task));
   }
 
+  function recordActivity() {
+    const today = getTodayKey();
+    setActivityDates((previous) => previous.includes(today) ? previous : [...previous, today]);
+  }
+
   function completeLesson(courseId) {
+    const course = courses.find((item) => item.id === courseId);
+    if (!course || course.progress >= 100) return;
+    recordActivity();
     setCourses((previous) => previous.map((course) => {
       if (course.id !== courseId || course.progress >= 100) return course;
       const nextProgress = Math.min(100, course.progress + 5);
@@ -161,6 +224,7 @@ function App() {
       setChallenges((previous) => previous.map((item) =>
         item.id === activeChallenge.id ? { ...item, completed: true } : item
       ));
+      recordActivity();
     }
     setFeedback(correct ? 'Correct! Great work. Your result has been saved.' : 'Not quite. Review the question and try again.');
   }
@@ -223,6 +287,8 @@ function App() {
           <StatCard icon="⌘" label="Challenges solved" value={completedChallenges} note={`${challenges.length} available`} color="purple" />
           <StatCard icon="✧" label="Points earned" value={earnedPoints} note="Keep earning more" color="orange" />
         </div>
+
+        <WeeklyActivity activityDates={activityDates} todayKey={todayKey} />
 
         <section className="content-section">
           <SectionHeading eyebrow="KEEP MOVING FORWARD" title="Continue learning" description="Pick up where you left off." action="All learning paths" onAction={() => navigate('Learning Paths')} />
@@ -386,7 +452,7 @@ function App() {
   }
 
   function renderSettings() {
-    return <section className="content-section page-section"><SectionHeading eyebrow="MAKE IT YOURS" title="Settings" description="Personalize your learning workspace." /><div className="panel settings-panel"><label className="settings-field"><span><strong>Display name</strong><small>This name appears in your dashboard and sample leaderboard.</small></span><input value={profileName} onChange={(event) => setProfileName(event.target.value)} placeholder="Your name" /></label><div className="settings-field"><span><strong>Appearance</strong><small>Choose a comfortable interface theme.</small></span><button className="secondary-button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? '☀ Light mode' : '☾ Dark mode'}</button></div><div className="settings-field"><span><strong>Local progress</strong><small>Your learning progress and preferences are stored in this browser.</small></span><span className="completed-label">Enabled</span></div><div className="settings-field"><span><strong>Reset demo data</strong><small>Restore starter courses, challenges, projects, and tasks.</small></span><button className="danger-button" onClick={() => { if (window.confirm('Reset all MhruPath demo progress?')) { setCourses(initialCourses); setChallenges(initialChallenges); setProjects(initialProjects); setTasks(initialTasks); } }}>Reset progress</button></div></div></section>;
+    return <section className="content-section page-section"><SectionHeading eyebrow="MAKE IT YOURS" title="Settings" description="Personalize your learning workspace." /><div className="panel settings-panel"><label className="settings-field"><span><strong>Display name</strong><small>This name appears in your dashboard and sample leaderboard.</small></span><input value={profileName} onChange={(event) => setProfileName(event.target.value)} placeholder="Your name" /></label><div className="settings-field"><span><strong>Appearance</strong><small>Choose a comfortable interface theme.</small></span><button className="secondary-button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? '☀ Light mode' : '☾ Dark mode'}</button></div><div className="settings-field"><span><strong>Local progress</strong><small>Your learning progress and preferences are stored in this browser.</small></span><span className="completed-label">Enabled</span></div><div className="settings-field"><span><strong>Reset demo data</strong><small>Restore starter courses, challenges, projects, and tasks.</small></span><button className="danger-button" onClick={() => { if (window.confirm('Reset all MhruPath demo progress?')) { setCourses(initialCourses); setChallenges(initialChallenges); setProjects(initialProjects); setTasks(initialTasks); setActivityDates([]); } }}>Reset progress</button></div></div></section>;
   }
 
   const pageDescriptions = {
@@ -445,6 +511,40 @@ function App() {
 
 function StatCard({ icon, label, value, note, color }) {
   return <article className="stat-card"><div className={`stat-icon ${color}`}>{icon}</div><p className="stat-label">{label}</p><div className="stat-value">{value}</div><p className="stat-note"><span>↗</span> {note}</p></article>;
+}
+
+function WeeklyActivity({ activityDates, todayKey }) {
+  const week = getWeekDatesForKey(todayKey);
+  const activeDates = new Set(activityDates);
+  const activeDays = week.filter((day) => activeDates.has(day.key)).length;
+  const streak = getActivityStreak(activityDates, todayKey);
+
+  return (
+    <section className="weekly-activity" aria-label="Weekly learning activity">
+      <div className="weekly-activity-copy">
+        <span className="weekly-activity-icon" aria-hidden="true">✦</span>
+        <div>
+          <p className="eyebrow">YOUR MOMENTUM</p>
+          <h2>{streak} day{streak === 1 ? '' : 's'} in a row</h2>
+          <p className="muted">{activeDays} of 7 days active this week</p>
+        </div>
+      </div>
+      <div className="week-activity" aria-label={`${activeDays} active days this week`}>
+        {week.map((day) => {
+          const isToday = day.key === todayKey;
+          const isActive = activeDates.has(day.key);
+          return (
+            <div className={`week-day ${isActive ? 'week-day-active' : ''} ${isToday ? 'week-day-today' : ''}`} key={day.key}>
+              <span>{day.label}</span>
+              <span className="week-day-mark" aria-label={isActive ? 'Activity recorded' : 'No activity'}>
+                {isActive ? '✓' : ''}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 function CourseCard({ course, onContinue }) {
