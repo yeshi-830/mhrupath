@@ -52,6 +52,14 @@ function getTodayDisplay() {
   }).format(new Date());
 }
 
+function formatLifeEventDate(dateKey) {
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(new Date(`${dateKey}T12:00:00`));
+}
+
 function getWeekDates(date) {
   const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7);
@@ -87,7 +95,7 @@ function getActivityStreak(activityDates, todayKey) {
 
 const navGroups = [
   { label: 'WORKSPACE', items: [{ id: 'Dashboard', icon: '▦' }, { id: 'Learning Paths', icon: '◫' }, { id: 'Challenges', icon: '⌘' }, { id: 'My Projects', icon: '▣' }] },
-  { label: 'YOUR JOURNEY', items: [{ id: 'My Progress', icon: '▥' }, { id: 'Leaderboard', icon: '♜' }, { id: 'Community', icon: '◎' }] },
+  { label: 'YOUR JOURNEY', items: [{ id: 'My Progress', icon: '▥' }, { id: 'Life Timeline', icon: '◷' }, { id: 'Leaderboard', icon: '♜' }, { id: 'Community', icon: '◎' }] },
 ];
 
 function readSaved(key, fallback) {
@@ -136,6 +144,7 @@ function App() {
   const [projects, setProjects] = useState(() => readSaved('projects', initialProjects));
   const [tasks, setTasks] = useState(() => readSaved('tasks', initialTasks));
   const [activityDates, setActivityDates] = useState(() => readSaved('activity-dates', []));
+  const [lifeEvents, setLifeEvents] = useState(() => readSaved('life-events', []));
   const [todayKey, setTodayKey] = useState(getTodayKey);
   const [todayDisplay, setTodayDisplay] = useState(getTodayDisplay);
   const [query, setQuery] = useState('');
@@ -151,6 +160,12 @@ function App() {
   const [newProjectTitle, setNewProjectTitle] = useState('');
   const [newProjectDescription, setNewProjectDescription] = useState('');
   const [newProjectStack, setNewProjectStack] = useState('');
+  const [showLifeEventForm, setShowLifeEventForm] = useState(false);
+  const [editingLifeEventId, setEditingLifeEventId] = useState(null);
+  const [lifeEventTitle, setLifeEventTitle] = useState('');
+  const [lifeEventDate, setLifeEventDate] = useState(getTodayKey);
+  const [lifeEventCategory, setLifeEventCategory] = useState('Personal');
+  const [lifeEventNotes, setLifeEventNotes] = useState('');
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -162,6 +177,7 @@ function App() {
   useEffect(() => saveValue('projects', projects), [projects]);
   useEffect(() => saveValue('tasks', tasks), [tasks]);
   useEffect(() => saveValue('activity-dates', activityDates), [activityDates]);
+  useEffect(() => saveValue('life-events', lifeEvents), [lifeEvents]);
   useEffect(() => saveValue('name', profileName), [profileName]);
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -190,6 +206,10 @@ function App() {
   const filteredProjects = useMemo(() => projects.filter((item) =>
     `${item.title} ${item.description} ${item.stack.join(' ')}`.toLowerCase().includes(query.toLowerCase())
   ), [projects, query]);
+
+  const filteredLifeEvents = useMemo(() => lifeEvents.filter((item) =>
+    `${item.title} ${item.category} ${item.notes}`.toLowerCase().includes(query.toLowerCase())
+  ), [lifeEvents, query]);
 
   function navigate(destination) {
     setPage(destination);
@@ -293,6 +313,54 @@ function App() {
         : item
     ));
     if (next === 'Completed') recordActivity();
+  }
+
+  function resetLifeEventForm() {
+    setShowLifeEventForm(false);
+    setEditingLifeEventId(null);
+    setLifeEventTitle('');
+    setLifeEventDate(getTodayKey());
+    setLifeEventCategory('Personal');
+    setLifeEventNotes('');
+  }
+
+  function editLifeEvent(item) {
+    setEditingLifeEventId(item.id);
+    setLifeEventTitle(item.title);
+    setLifeEventDate(item.date);
+    setLifeEventCategory(item.category);
+    setLifeEventNotes(item.notes);
+    setShowLifeEventForm(true);
+  }
+
+  function saveLifeEvent(event) {
+    event.preventDefault();
+    const title = lifeEventTitle.trim();
+    if (!title) return;
+
+    const entry = {
+      title,
+      date: lifeEventDate,
+      category: lifeEventCategory,
+      notes: lifeEventNotes.trim(),
+    };
+
+    if (editingLifeEventId !== null) {
+      setLifeEvents((previous) => previous.map((item) =>
+        item.id === editingLifeEventId ? { ...item, ...entry } : item
+      ));
+    } else {
+      const id = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setLifeEvents((previous) => [...previous, { id, ...entry }]);
+    }
+
+    resetLifeEventForm();
+  }
+
+  function deleteLifeEvent(id) {
+    if (!window.confirm('Delete this life milestone? This cannot be undone.')) return;
+    setLifeEvents((previous) => previous.filter((item) => item.id !== id));
+    if (editingLifeEventId === id) resetLifeEventForm();
   }
 
   function renderDashboard() {
@@ -503,6 +571,95 @@ function App() {
     );
   }
 
+  function renderLifeTimeline() {
+    const sortedEvents = [...filteredLifeEvents].sort((first, second) =>
+      second.date.localeCompare(first.date)
+    );
+
+    return (
+      <section className="content-section page-section">
+        <SectionHeading
+          eyebrow="YOUR LIFE, YOUR STORY"
+          title="A life worth remembering"
+          description="Record the moments, changes, and milestones that shape your life."
+          action={showLifeEventForm ? 'Cancel' : 'Record a milestone'}
+          onAction={() => showLifeEventForm ? resetLifeEventForm() : setShowLifeEventForm(true)}
+        />
+        <div className="life-timeline-summary panel">
+          <span className="life-timeline-icon" aria-hidden="true">◷</span>
+          <div>
+            <strong>{lifeEvents.length} {lifeEvents.length === 1 ? 'moment' : 'moments'} recorded</strong>
+            <p className="muted">Your timeline is saved privately in this browser.</p>
+          </div>
+        </div>
+
+        {showLifeEventForm && (
+          <form className="life-event-form panel" onSubmit={saveLifeEvent}>
+            <div className="life-event-form-heading">
+              <span className="eyebrow">{editingLifeEventId !== null ? 'UPDATE YOUR STORY' : 'SAVE THIS MOMENT'}</span>
+              <h3>{editingLifeEventId !== null ? 'Edit milestone' : 'Record a milestone'}</h3>
+            </div>
+            <label>
+              <span>What happened?</span>
+              <input autoFocus required maxLength={100} value={lifeEventTitle} onChange={(event) => setLifeEventTitle(event.target.value)} placeholder="e.g. Moved to a new city" />
+            </label>
+            <label>
+              <span>When?</span>
+              <input required type="date" value={lifeEventDate} onChange={(event) => setLifeEventDate(event.target.value)} />
+            </label>
+            <label>
+              <span>Category</span>
+              <select value={lifeEventCategory} onChange={(event) => setLifeEventCategory(event.target.value)}>
+                <option>Personal</option>
+                <option>Family & relationships</option>
+                <option>Education</option>
+                <option>Work</option>
+                <option>Health</option>
+                <option>Travel</option>
+                <option>Other</option>
+              </select>
+            </label>
+            <label className="life-event-notes-field">
+              <span>Details <small>Optional</small></span>
+              <textarea maxLength={1000} value={lifeEventNotes} onChange={(event) => setLifeEventNotes(event.target.value)} placeholder="Add a few details to remember this moment..." rows="4" />
+            </label>
+            <div className="life-event-form-actions">
+              <button className="secondary-button" type="button" onClick={resetLifeEventForm}>Cancel</button>
+              <button className="primary-button" type="submit">{editingLifeEventId !== null ? 'Save changes' : 'Save milestone'} <span>→</span></button>
+            </div>
+          </form>
+        )}
+
+        <div className="life-timeline">
+          {sortedEvents.map((item) => (
+            <article className="life-event-card panel" key={item.id}>
+              <div className="life-event-marker" aria-hidden="true"><span /></div>
+              <div className="life-event-content">
+                <div className="life-event-meta">
+                  <time dateTime={item.date}>{formatLifeEventDate(item.date)}</time>
+                  <span className="life-event-category">{item.category}</span>
+                </div>
+                <h3>{item.title}</h3>
+                {item.notes && <p className="life-event-notes">{item.notes}</p>}
+              </div>
+              <div className="life-event-actions">
+                <button className="text-button" type="button" onClick={() => editLifeEvent(item)}>Edit</button>
+                <button className="text-button life-event-delete" type="button" onClick={() => deleteLifeEvent(item.id)}>Delete</button>
+              </div>
+            </article>
+          ))}
+          {!sortedEvents.length && (
+            <EmptyState
+              title={query ? 'No matching moments' : 'Your story starts here'}
+              detail={query ? 'Try another search.' : 'Add a milestone, memory, or turning point to begin your timeline.'}
+            />
+          )}
+        </div>
+        <p className="muted small-text life-timeline-privacy">Only milestones you choose to add are recorded. Your entries stay in this browser and are not sent to a server.</p>
+      </section>
+    );
+  }
+
   function renderLeaderboard() {
     const people = [
       { name: profileName, points: earnedPoints, you: true },
@@ -529,6 +686,7 @@ function App() {
     'Challenges': 'Practice your coding knowledge.',
     'My Projects': 'Turn ideas into working applications.',
     'My Progress': 'Track your learning journey.',
+    'Life Timeline': 'Record and revisit the moments that shape your life.',
     'Leaderboard': 'Celebrate learning achievements.',
     'Community': 'Learn and grow together.',
     'Settings': 'Customize your workspace.',
@@ -566,6 +724,7 @@ function App() {
           {page === 'Challenges' && renderChallenges()}
           {page === 'My Projects' && renderProjects()}
           {page === 'My Progress' && renderProgress()}
+          {page === 'Life Timeline' && renderLifeTimeline()}
           {page === 'Leaderboard' && renderLeaderboard()}
           {page === 'Community' && renderCommunity()}
           {page === 'Settings' && renderSettings()}
