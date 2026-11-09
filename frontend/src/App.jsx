@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 
 const initialCourses = [
@@ -115,6 +115,41 @@ function saveValue(key, value) {
   }
 }
 
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isProgressBackup(value) {
+  if (!isRecord(value) || value.version !== 1 || !isRecord(value.data)) return false;
+  const { courses, challenges, projects, tasks, activityDates, lifeEvents, profileName, theme } = value.data;
+  const isString = (item) => typeof item === 'string';
+  const isArrayOfStrings = (items) => Array.isArray(items) && items.every(isString);
+  const isProgress = (item) => Number.isFinite(item) && item >= 0 && item <= 100;
+
+  return Array.isArray(courses) && courses.every((item) =>
+    isRecord(item) && typeof item.id === 'number' && isString(item.name) &&
+    isString(item.category) && isString(item.level) && isProgress(item.progress) &&
+    isString(item.lessons) && isString(item.color) && isString(item.icon)
+  ) && Array.isArray(challenges) && challenges.every((item) =>
+    isRecord(item) && typeof item.id === 'number' && isString(item.title) &&
+    isString(item.topic) && isString(item.difficulty) && typeof item.points === 'number' &&
+    isString(item.question) && isArrayOfStrings(item.options) && isString(item.answer) &&
+    item.options.includes(item.answer) && typeof item.completed === 'boolean'
+  ) && Array.isArray(projects) && projects.every((item) =>
+    isRecord(item) && typeof item.id === 'number' && isString(item.title) &&
+    isString(item.description) && isArrayOfStrings(item.stack) &&
+    ['Not started', 'In progress', 'Completed'].includes(item.status) &&
+    isProgress(item.progress) && isString(item.icon) && isString(item.color)
+  ) && Array.isArray(tasks) && tasks.every((item) =>
+    isRecord(item) && (typeof item.id === 'number' || isString(item.id)) &&
+    isString(item.title) && isString(item.detail) && typeof item.done === 'boolean'
+  ) && isArrayOfStrings(activityDates) && Array.isArray(lifeEvents) && lifeEvents.every((item) =>
+    isRecord(item) && (typeof item.id === 'number' || isString(item.id)) &&
+    isString(item.title) && /^\d{4}-\d{2}-\d{2}$/.test(item.date) &&
+    isString(item.category) && isString(item.notes)
+  ) && isString(profileName) && ['dark', 'light'].includes(theme);
+}
+
 function ProgressBar({ value, color = 'blue' }) {
   return (
     <div className="progress-track" role="progressbar" aria-valuenow={value} aria-valuemin="0" aria-valuemax="100">
@@ -148,6 +183,7 @@ function App() {
   const [todayKey, setTodayKey] = useState(getTodayKey);
   const [todayDisplay, setTodayDisplay] = useState(getTodayDisplay);
   const [query, setQuery] = useState('');
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [category, setCategory] = useState('All');
   const [activeChallenge, setActiveChallenge] = useState(null);
   const [selectedAnswer, setSelectedAnswer] = useState('');
@@ -166,6 +202,9 @@ function App() {
   const [lifeEventDate, setLifeEventDate] = useState(getTodayKey);
   const [lifeEventCategory, setLifeEventCategory] = useState('Personal');
   const [lifeEventNotes, setLifeEventNotes] = useState('');
+  const [settingsFeedback, setSettingsFeedback] = useState('');
+  const searchInputRef = useRef(null);
+  const backupInputRef = useRef(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -185,6 +224,25 @@ function App() {
       setTodayDisplay(getTodayDisplay());
     }, 60_000);
     return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') {
+        setMobileMenu(false);
+        setMobileSearchOpen(false);
+        setShowNotifications(false);
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setMobileSearchOpen(true);
+        searchInputRef.current?.focus();
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const completedChallenges = challenges.filter((item) => item.completed).length;
@@ -215,9 +273,54 @@ function App() {
     setPage(destination);
     setQuery('');
     setMobileMenu(false);
+    setMobileSearchOpen(false);
     setShowNotifications(false);
     setActiveChallenge(null);
     setFeedback('');
+  }
+
+  function exportProgress() {
+    const backup = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      data: { courses, challenges, projects, tasks, activityDates, lifeEvents, profileName, theme },
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `mhrupath-progress-${getTodayKey()}.json`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    setSettingsFeedback('Your progress backup has been downloaded.');
+  }
+
+  async function importProgress(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const backup = JSON.parse(await file.text());
+      if (!isProgressBackup(backup)) {
+        setSettingsFeedback('This file is not a valid MhruPath progress backup.');
+        return;
+      }
+
+      const data = backup.data;
+      setCourses(data.courses);
+      setChallenges(data.challenges);
+      setProjects(data.projects);
+      setTasks(data.tasks);
+      setActivityDates(data.activityDates);
+      setLifeEvents(data.lifeEvents);
+      setProfileName(data.profileName);
+      setTheme(data.theme);
+      setSettingsFeedback('Your backup has been restored.');
+    } catch (error) {
+      console.error('Unable to restore the MhruPath progress backup.', error);
+      setSettingsFeedback('The backup could not be read. Choose a valid MhruPath JSON backup.');
+    } finally {
+      event.target.value = '';
+    }
   }
 
   function toggleTask(id) {
@@ -677,7 +780,38 @@ function App() {
   }
 
   function renderSettings() {
-    return <section className="content-section page-section"><SectionHeading eyebrow="MAKE IT YOURS" title="Settings" description="Personalize your learning workspace." /><div className="panel settings-panel"><label className="settings-field"><span><strong>Display name</strong><small>This name appears in your dashboard and sample leaderboard.</small></span><input value={profileName} onChange={(event) => setProfileName(event.target.value)} placeholder="Your name" /></label><div className="settings-field"><span><strong>Appearance</strong><small>Choose a comfortable interface theme.</small></span><button className="secondary-button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? '☀ Light mode' : '☾ Dark mode'}</button></div><div className="settings-field"><span><strong>Local progress</strong><small>Your learning progress and preferences are stored in this browser.</small></span><span className="completed-label">Enabled</span></div><div className="settings-field"><span><strong>Reset demo data</strong><small>Restore starter courses, challenges, projects, and tasks.</small></span><button className="danger-button" onClick={() => { if (window.confirm('Reset all MhruPath demo progress?')) { setCourses(initialCourses); setChallenges(initialChallenges); setProjects(initialProjects); setTasks(initialTasks); setActivityDates([]); } }}>Reset progress</button></div></div></section>;
+    return (
+      <section className="content-section page-section">
+        <SectionHeading eyebrow="MAKE IT YOURS" title="Settings" description="Personalize your learning workspace." />
+        <div className="panel settings-panel">
+          <label className="settings-field">
+            <span><strong>Display name</strong><small>This name appears in your dashboard and sample leaderboard.</small></span>
+            <input maxLength={40} value={profileName} onChange={(event) => setProfileName(event.target.value)} placeholder="Your name" />
+          </label>
+          <div className="settings-field">
+            <span><strong>Appearance</strong><small>Choose a comfortable interface theme.</small></span>
+            <button type="button" className="secondary-button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? '☀ Light mode' : '☾ Dark mode'}</button>
+          </div>
+          <div className="settings-field">
+            <span><strong>Local progress</strong><small>Your learning progress and preferences are stored in this browser.</small></span>
+            <span className="completed-label">Enabled</span>
+          </div>
+          <div className="settings-field">
+            <span><strong>Backup & restore</strong><small>Download a private copy of your progress or restore it on this device.</small></span>
+            <div className="settings-actions">
+              <button type="button" className="secondary-button" onClick={exportProgress}>Download backup</button>
+              <button type="button" className="secondary-button" onClick={() => backupInputRef.current?.click()}>Restore backup</button>
+              <input ref={backupInputRef} className="visually-hidden" type="file" accept="application/json,.json" onChange={importProgress} aria-label="Choose a MhruPath backup file" />
+            </div>
+          </div>
+          {settingsFeedback && <p className="settings-feedback" role="status">{settingsFeedback}</p>}
+          <div className="settings-field">
+            <span><strong>Reset demo data</strong><small>Restore starter courses, challenges, projects, and tasks.</small></span>
+            <button type="button" className="danger-button" onClick={() => { if (window.confirm('Reset all MhruPath demo progress?')) { setCourses(initialCourses); setChallenges(initialChallenges); setProjects(initialProjects); setTasks(initialTasks); setActivityDates([]); setSettingsFeedback('Demo progress has been reset.'); } }}>Reset progress</button>
+          </div>
+        </div>
+      </section>
+    );
   }
 
   const pageDescriptions = {
@@ -699,17 +833,18 @@ function App() {
         <button className="brand" onClick={() => navigate('Dashboard')} aria-label="MhruPath home"><span className="brand-mark">M<span>.</span></span><span className="brand-copy">Mhru<span>Path</span><small>YOUR DEVELOPER JOURNEY</small></span></button>
         <div className="sidebar-divider" />
         <div className="sidebar-profile"><div className="avatar profile-avatar">{profileName.slice(0, 1).toUpperCase() || 'D'}</div><div><strong>{profileName || 'Developer'}</strong><small>Future Software Engineer</small></div><span className="profile-status" /></div>
-        <nav className="sidebar-nav" aria-label="Main navigation">
-          {navGroups.map((group) => <div className="nav-group" key={group.label}><p className="nav-label">{group.label}</p>{group.items.map((item) => <button key={item.id} className={`nav-item ${page === item.id ? 'active' : ''}`} onClick={() => navigate(item.id)}><span className="nav-icon">{item.icon}</span><span>{item.id}</span>{item.id === 'Challenges' && <span className="nav-count">{challenges.length - completedChallenges}</span>}</button>)}</div>)}
+        <nav id="primary-navigation" className="sidebar-nav" aria-label="Main navigation">
+          {navGroups.map((group) => <div className="nav-group" key={group.label}><p className="nav-label">{group.label}</p>{group.items.map((item) => <button key={item.id} className={`nav-item ${page === item.id ? 'active' : ''}`} aria-current={page === item.id ? 'page' : undefined} onClick={() => navigate(item.id)}><span className="nav-icon">{item.icon}</span><span>{item.id}</span>{item.id === 'Challenges' && <span className="nav-count">{challenges.length - completedChallenges}</span>}</button>)}</div>)}
         </nav>
         <div className="sidebar-bottom"><div className="daily-goal"><div className="goal-icon">✦</div><strong>Small steps, big goals.</strong><p>Every line of code is progress.</p><ProgressBar value={tasks.length ? completedTasks / tasks.length * 100 : 0} /><small>{completedTasks}/{tasks.length} daily tasks done</small></div><button className={`nav-item ${page === 'Settings' ? 'active' : ''}`} onClick={() => navigate('Settings')}><span className="nav-icon">⚙</span>Settings</button><div className="sidebar-version">MHRUPATH · LEARN BY BUILDING</div></div>
       </aside>
 
       <main className="main-area">
         <header className="topbar">
-          <div className="topbar-left"><button className="mobile-menu-button" onClick={() => setMobileMenu(!mobileMenu)} aria-label="Toggle menu">☰</button><div><div className="breadcrumb">Workspace <span>/</span> {page}</div><p className="topbar-subtitle">{pageDescriptions[page]}</p></div></div>
+          <div className="topbar-left"><button className="mobile-menu-button" aria-expanded={mobileMenu} aria-controls="primary-navigation" onClick={() => setMobileMenu(!mobileMenu)} aria-label={mobileMenu ? 'Close navigation menu' : 'Open navigation menu'}>☰</button><div><div className="breadcrumb">Workspace <span>/</span> {page}</div><p className="topbar-subtitle">{pageDescriptions[page]}</p></div></div>
           <div className="topbar-actions">
-            <label className="search-box"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search anything..." aria-label="Search" /><kbd>⌕</kbd></label>
+            <label className={`search-box ${mobileSearchOpen ? 'search-open' : ''}`}><span aria-hidden="true">⌕</span><input ref={searchInputRef} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this section..." aria-label="Search courses, challenges, projects, and milestones" /><kbd>⌕</kbd></label>
+            <button type="button" className="icon-button mobile-search-button" aria-label={mobileSearchOpen ? 'Close search' : 'Open search'} aria-expanded={mobileSearchOpen} onClick={() => { setMobileSearchOpen(!mobileSearchOpen); if (!mobileSearchOpen) window.setTimeout(() => searchInputRef.current?.focus(), 0); }}>⌕</button>
             <button className="icon-button" aria-label="Toggle theme" title="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? '☼' : '☾'}</button>
             <div className="notification-wrap"><button className="icon-button notification-button" aria-label="Notifications" onClick={() => setShowNotifications(!showNotifications)}>♧<span className="notification-dot" /></button>{showNotifications && <div className="notification-popover"><strong>You're all caught up!</strong><p className="muted">Keep going with your next lesson or coding challenge.</p><button className="text-button" onClick={() => { setShowNotifications(false); navigate('Challenges'); }}>Practice now →</button></div>}</div>
             <button className="top-avatar" onClick={() => navigate('Settings')} title="Profile settings">{profileName.slice(0, 1).toUpperCase() || 'D'}</button>

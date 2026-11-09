@@ -317,6 +317,10 @@
   font-size: 13px;
 }
 
+.mobile-search-button {
+  display: none;
+}
+
 .icon-button,
 .mobile-menu-button {
   position: relative;
@@ -1973,6 +1977,34 @@
   max-width: 250px;
 }
 
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-feedback {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-size: 11px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+  border: 0;
+}
+
 .life-timeline-summary {
   display: flex;
   align-items: center;
@@ -2364,20 +2396,38 @@
   }
 
   .search-box {
-    width: 38px;
-    padding: 0;
-    justify-content: center;
-    border: 0;
-    background: transparent;
+    display: none;
+  }
+
+  .search-box.search-open {
+    position: absolute;
+    top: 14px;
+    right: 60px;
+    z-index: 22;
+    display: flex;
+    width: min(220px, calc(100vw - 130px));
+    padding: 0 10px;
+    justify-content: flex-start;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow);
   }
 
   .search-box input,
+  .search-box.search-open input {
+    display: block;
+  }
+
   .search-box kbd {
     display: none;
   }
 
   .search-box > span {
     font-size: 24px;
+  }
+
+  .mobile-search-button {
+    display: grid;
   }
 
   .page-content {
@@ -2547,6 +2597,14 @@
 
   .settings-field input {
     max-width: none;
+  }
+
+  .settings-actions {
+    width: 100%;
+  }
+
+  .settings-actions > button {
+    flex: 1;
   }
 
   .add-task-form {
