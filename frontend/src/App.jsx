@@ -115,6 +115,53 @@ function saveValue(key, value) {
   }
 }
 
+function readSavedList(key, fallback, isValidItem) {
+  const value = readSaved(key, fallback);
+  return Array.isArray(value) ? value.filter(isValidItem) : fallback;
+}
+
+function isSavedCourse(item) {
+  return isRecord(item) && Number.isFinite(item.id) && typeof item.name === 'string' &&
+    typeof item.category === 'string' && typeof item.level === 'string' &&
+    Number.isFinite(item.progress) && item.progress >= 0 && item.progress <= 100 &&
+    /^\d+\/\d+$/.test(item.lessons) && typeof item.color === 'string' && typeof item.icon === 'string';
+}
+
+function isSavedChallenge(item) {
+  return isRecord(item) && Number.isFinite(item.id) && typeof item.title === 'string' &&
+    typeof item.topic === 'string' && typeof item.difficulty === 'string' &&
+    Number.isFinite(item.points) && item.points >= 0 && typeof item.question === 'string' &&
+    Array.isArray(item.options) && item.options.every((option) => typeof option === 'string') &&
+    item.options.includes(item.answer) && typeof item.completed === 'boolean';
+}
+
+function isSavedProject(item) {
+  return isRecord(item) && Number.isFinite(item.id) && typeof item.title === 'string' &&
+    typeof item.description === 'string' && Array.isArray(item.stack) &&
+    item.stack.every((tag) => typeof tag === 'string') &&
+    ['Not started', 'In progress', 'Completed'].includes(item.status) &&
+    Number.isFinite(item.progress) && item.progress >= 0 && item.progress <= 100 &&
+    typeof item.icon === 'string' && typeof item.color === 'string';
+}
+
+function isSavedTask(item) {
+  return isRecord(item) && (Number.isFinite(item.id) || typeof item.id === 'string') &&
+    typeof item.title === 'string' && typeof item.detail === 'string' && typeof item.done === 'boolean';
+}
+
+function isDateKey(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+}
+
+function isSavedLifeEvent(item) {
+  return isRecord(item) && (Number.isFinite(item.id) || typeof item.id === 'string') &&
+    typeof item.title === 'string' && isDateKey(item.date) && typeof item.category === 'string' &&
+    typeof item.notes === 'string';
+}
+
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -174,15 +221,16 @@ function SectionHeading({ eyebrow, title, description, action, onAction }) {
 function App() {
   const [page, setPage] = useState('Dashboard');
   const [theme, setTheme] = useState(() => readSaved('theme', 'dark'));
-  const [courses, setCourses] = useState(() => readSaved('courses', initialCourses));
-  const [challenges, setChallenges] = useState(() => readSaved('challenges', initialChallenges));
-  const [projects, setProjects] = useState(() => readSaved('projects', initialProjects));
-  const [tasks, setTasks] = useState(() => readSaved('tasks', initialTasks));
-  const [activityDates, setActivityDates] = useState(() => readSaved('activity-dates', []));
-  const [lifeEvents, setLifeEvents] = useState(() => readSaved('life-events', []));
+  const [courses, setCourses] = useState(() => readSavedList('courses', initialCourses, isSavedCourse));
+  const [challenges, setChallenges] = useState(() => readSavedList('challenges', initialChallenges, isSavedChallenge));
+  const [projects, setProjects] = useState(() => readSavedList('projects', initialProjects, isSavedProject));
+  const [tasks, setTasks] = useState(() => readSavedList('tasks', initialTasks, isSavedTask));
+  const [activityDates, setActivityDates] = useState(() => readSavedList('activity-dates', [], isDateKey));
+  const [lifeEvents, setLifeEvents] = useState(() => readSavedList('life-events', [], isSavedLifeEvent));
   const [todayKey, setTodayKey] = useState(getTodayKey);
   const [todayDisplay, setTodayDisplay] = useState(getTodayDisplay);
   const [query, setQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [category, setCategory] = useState('All');
   const [activeChallenge, setActiveChallenge] = useState(null);
@@ -247,6 +295,8 @@ function App() {
 
   const completedChallenges = challenges.filter((item) => item.completed).length;
   const completedTasks = tasks.filter((task) => task.done).length;
+  const pendingTasks = tasks.filter((task) => !task.done).length;
+  const availableChallenges = challenges.filter((item) => !item.completed).length;
   const averageProgress = courses.length
     ? Math.round(courses.reduce((sum, course) => sum + course.progress, 0) / courses.length)
     : 0;
@@ -271,6 +321,22 @@ function App() {
     `${item.title} ${item.category} ${item.notes}`.toLowerCase().includes(query.toLowerCase())
   ), [lifeEvents, query]);
 
+  const globalSearchResults = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return [];
+
+    return [
+      ...courses.filter((item) => `${item.name} ${item.category}`.toLowerCase().includes(normalizedQuery))
+        .map((item) => ({ title: item.name, detail: `Learning path · ${item.category}`, page: 'Learning Paths' })),
+      ...challenges.filter((item) => `${item.title} ${item.topic} ${item.difficulty}`.toLowerCase().includes(normalizedQuery))
+        .map((item) => ({ title: item.title, detail: `Challenge · ${item.topic}`, page: 'Challenges' })),
+      ...projects.filter((item) => `${item.title} ${item.description} ${item.stack.join(' ')}`.toLowerCase().includes(normalizedQuery))
+        .map((item) => ({ title: item.title, detail: `Project · ${item.status}`, page: 'My Projects' })),
+      ...lifeEvents.filter((item) => `${item.title} ${item.category} ${item.notes}`.toLowerCase().includes(normalizedQuery))
+        .map((item) => ({ title: item.title, detail: `Milestone · ${item.category}`, page: 'Life Timeline' })),
+    ].slice(0, 7);
+  }, [query, courses, challenges, projects, lifeEvents]);
+
   function navigate(destination) {
     setPage(destination);
     setQuery('');
@@ -279,6 +345,12 @@ function App() {
     setShowNotifications(false);
     setActiveChallenge(null);
     setFeedback('');
+    setSearchFocused(false);
+  }
+
+  function openSearchResult(result) {
+    navigate(result.page);
+    setQuery(result.title);
   }
 
   function exportProgress() {
@@ -385,6 +457,10 @@ function App() {
       done: false,
     }]);
     setNewTask('');
+  }
+
+  function removeTask(id) {
+    setTasks((previous) => previous.filter((task) => task.id !== id));
   }
 
   function addProject(event) {
@@ -530,16 +606,19 @@ function App() {
             <div className="focus-progress"><ProgressBar value={tasks.length ? Math.round(completedTasks / tasks.length * 100) : 0} /><span>{tasks.length ? Math.round(completedTasks / tasks.length * 100) : 0}%</span></div>
             <div className="task-list">
               {focusTasks.map((task) => (
-                <label className={`task-item ${task.done ? 'task-done' : ''}`} key={task.id}>
-                  <input type="checkbox" checked={task.done} onChange={() => toggleTask(task.id)} />
-                  <span className="custom-check">{task.done ? '✓' : ''}</span>
-                  <span className="task-copy"><strong>{task.title}</strong><small>{task.detail}</small></span>
-                </label>
+                <div className="task-row" key={task.id}>
+                  <label className={`task-item ${task.done ? 'task-done' : ''}`}>
+                    <input type="checkbox" checked={task.done} onChange={() => toggleTask(task.id)} />
+                    <span className="custom-check">{task.done ? '✓' : ''}</span>
+                    <span className="task-copy"><strong>{task.title}</strong><small>{task.detail}</small></span>
+                  </label>
+                  <button className="task-remove" type="button" aria-label={`Remove ${task.title}`} title="Remove task" onClick={() => removeTask(task.id)}>×</button>
+                </div>
               ))}
             </div>
             {!tasks.length && <p className="muted small-text">Add a small goal to get your day started.</p>}
             <form className="quick-task-form" onSubmit={addTask}>
-              <input value={newTask} onChange={(event) => setNewTask(event.target.value)} placeholder="Add a quick task..." aria-label="New focus task" />
+              <input value={newTask} onChange={(event) => setNewTask(event.target.value)} placeholder="Add a quick task..." aria-label="New focus task" maxLength={120} required />
               <button type="submit" aria-label="Add focus task">+</button>
             </form>
           </section>
@@ -672,9 +751,9 @@ function App() {
         </section>
         <section className="panel">
           <SectionHeading title="Your daily focus" description="Keep your tasks manageable and celebrate your progress." />
-          <form className="add-task-form" onSubmit={addTask}><input value={newTask} onChange={(event) => setNewTask(event.target.value)} placeholder="Add a learning goal..." aria-label="New learning goal" /><button className="primary-button" type="submit">+ Add task</button></form>
+          <form className="add-task-form" onSubmit={addTask}><input value={newTask} onChange={(event) => setNewTask(event.target.value)} placeholder="Add a learning goal..." aria-label="New learning goal" maxLength={120} required /><button className="primary-button" type="submit">+ Add task</button></form>
           <div className="task-list">
-            {tasks.map((task) => <label className={`task-item ${task.done ? 'task-done' : ''}`} key={task.id}><input type="checkbox" checked={task.done} onChange={() => toggleTask(task.id)} /><span className="custom-check">{task.done ? '✓' : ''}</span><span className="task-copy"><strong>{task.title}</strong><small>{task.detail}</small></span></label>)}
+            {tasks.map((task) => <div className="task-row" key={task.id}><label className={`task-item ${task.done ? 'task-done' : ''}`}><input type="checkbox" checked={task.done} onChange={() => toggleTask(task.id)} /><span className="custom-check">{task.done ? '✓' : ''}</span><span className="task-copy"><strong>{task.title}</strong><small>{task.detail}</small></span></label><button className="task-remove" type="button" aria-label={`Remove ${task.title}`} title="Remove task" onClick={() => removeTask(task.id)}>×</button></div>)}
           </div>
         </section>
       </section>
@@ -850,10 +929,46 @@ function App() {
         <header className="topbar">
           <div className="topbar-left"><button className="mobile-menu-button" aria-expanded={mobileMenu} aria-controls="primary-navigation" onClick={() => setMobileMenu(!mobileMenu)} aria-label={mobileMenu ? 'Close navigation menu' : 'Open navigation menu'}>☰</button><div><div className="breadcrumb">Workspace <span>/</span> {page}</div><p className="topbar-subtitle">{pageDescriptions[page]}</p></div></div>
           <div className="topbar-actions">
-            <label className={`search-box ${mobileSearchOpen ? 'search-open' : ''}`}><span aria-hidden="true">⌕</span><input ref={searchInputRef} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this section..." aria-label="Search courses, challenges, projects, and milestones" /><kbd>⌕</kbd></label>
+            <div className={`search-wrap ${mobileSearchOpen ? 'search-mobile-open' : ''}`}>
+              <label className="search-box">
+                <span aria-hidden="true">⌕</span>
+                <input
+                  ref={searchInputRef}
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                  placeholder="Search your workspace..."
+                  aria-label="Search learning paths, challenges, projects, and milestones"
+                  aria-haspopup="listbox"
+                  aria-expanded={searchFocused && Boolean(query.trim())}
+                />
+                <kbd>Ctrl K</kbd>
+              </label>
+              {searchFocused && query.trim() && (
+                <div className="search-results" role="listbox" aria-label="Search results">
+                  {globalSearchResults.length ? globalSearchResults.map((result) => (
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected="false"
+                      className="search-result"
+                      key={`${result.page}-${result.title}`}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => openSearchResult(result)}
+                    >
+                      <span className="search-result-icon" aria-hidden="true">⌕</span>
+                      <span><strong>{result.title}</strong><small>{result.detail}</small></span>
+                      <span className="search-result-arrow" aria-hidden="true">→</span>
+                    </button>
+                  )) : <p className="search-empty">No matches in your workspace.</p>}
+                </div>
+              )}
+            </div>
             <button type="button" className="icon-button mobile-search-button" aria-label={mobileSearchOpen ? 'Close search' : 'Open search'} aria-expanded={mobileSearchOpen} onClick={() => { setMobileSearchOpen(!mobileSearchOpen); if (!mobileSearchOpen) window.setTimeout(() => searchInputRef.current?.focus(), 0); }}>⌕</button>
             <button className="icon-button" aria-label="Toggle theme" title="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? '☼' : '☾'}</button>
-            <div className="notification-wrap"><button className="icon-button notification-button" aria-label="Notifications" aria-expanded={showNotifications} onClick={() => setShowNotifications(!showNotifications)}>♧</button>{showNotifications && <div className="notification-popover"><strong>You're all caught up!</strong><p className="muted">Keep going with your next lesson or coding challenge.</p><button className="text-button" onClick={() => { setShowNotifications(false); navigate('Challenges'); }}>Practice now →</button></div>}</div>
+            <div className="notification-wrap"><button className="icon-button notification-button" aria-label="Learning reminders" aria-expanded={showNotifications} onClick={() => setShowNotifications(!showNotifications)}>♧</button>{showNotifications && <div className="notification-popover"><strong>{pendingTasks ? 'Your daily focus' : availableChallenges ? 'Ready for a quick practice?' : 'You’re all caught up!'}</strong><p className="muted">{pendingTasks ? `${pendingTasks} task${pendingTasks === 1 ? '' : 's'} left in your daily focus.` : availableChallenges ? `${availableChallenges} coding challenge${availableChallenges === 1 ? '' : 's'} ready when you are.` : 'You have completed your current learning goals.'}</p><button className="text-button" onClick={() => { const destination = pendingTasks ? 'My Progress' : availableChallenges ? 'Challenges' : 'Dashboard'; setShowNotifications(false); navigate(destination); }}>{pendingTasks ? 'Review daily focus →' : availableChallenges ? 'Practice now →' : 'Back to dashboard →'}</button></div>}</div>
             <button className="top-avatar" onClick={() => navigate('Settings')} title="Profile settings">{profileName.slice(0, 1).toUpperCase() || 'D'}</button>
           </div>
         </header>
