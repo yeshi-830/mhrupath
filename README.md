@@ -12,9 +12,9 @@ Self-directed learners often spread their goals across course trackers, notes, a
 - Six editable learning paths with category filters and lesson progress.
 - Built-in multiple-choice coding challenges with saved completion and points.
 - Project list with create, search, and status progression.
-- Daily learning goals and a personal milestone timeline.
+- Daily learning goals that can be completed or removed, and a personal milestone timeline.
 - Progress view, a clearly labeled sample leaderboard, and community guidance.
-- Light and dark themes, responsive navigation, and section search.
+- Light and dark themes, responsive navigation, and workspace-wide search across paths, challenges, projects, and milestones.
 - JSON progress backup and restore, with validation before imported data is applied.
 
 The leaderboard entries are sample data. Community content is informational; MhruPath does not currently provide accounts, shared posts, or live chat.
@@ -34,6 +34,8 @@ The frontend is a React single-page application. It reads and writes progress lo
 MhruPath/
 ├── backend/
 │   ├── server.js          # Express status and health routes
+│   ├── test/
+│   │   └── server.test.js # API route, CORS, and request validation tests
 │   ├── package.json
 │   └── package-lock.json
 ├── frontend/
@@ -110,10 +112,11 @@ npm run preview
 From `backend/`:
 
 ```bash
+npm test
 npm start
 ```
 
-Then open `http://localhost:5000/api/health` to check the API. There is no automated test suite configured yet.
+The API test suite uses Node's built-in test runner. Then open `http://localhost:5000/api/health` to check the running API.
 
 ## Screenshots
 

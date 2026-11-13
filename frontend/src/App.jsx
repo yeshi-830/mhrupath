@@ -1,5 +1,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { isDateKey, isProgressBackup, isSavedChallenge, isSavedCourse, isSavedLifeEvent, isSavedProject, isSavedTask } from './progress.js';
 import './App.css';
 
 const initialCourses = [
@@ -42,6 +43,10 @@ function getDateKey(date) {
 
 function getTodayKey() {
   return getDateKey(new Date());
+}
+
+function createLocalId() {
+  return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function getTodayDisplay() {
@@ -118,68 +123,6 @@ function saveValue(key, value) {
 function readSavedList(key, fallback, isValidItem) {
   const value = readSaved(key, fallback);
   return Array.isArray(value) ? value.filter(isValidItem) : fallback;
-}
-
-function isSavedCourse(item) {
-  return isRecord(item) && Number.isFinite(item.id) && typeof item.name === 'string' &&
-    typeof item.category === 'string' && typeof item.level === 'string' &&
-    Number.isFinite(item.progress) && item.progress >= 0 && item.progress <= 100 &&
-    /^\d+\/\d+$/.test(item.lessons) && typeof item.color === 'string' && typeof item.icon === 'string';
-}
-
-function isSavedChallenge(item) {
-  return isRecord(item) && Number.isFinite(item.id) && typeof item.title === 'string' &&
-    typeof item.topic === 'string' && typeof item.difficulty === 'string' &&
-    Number.isFinite(item.points) && item.points >= 0 && typeof item.question === 'string' &&
-    Array.isArray(item.options) && item.options.every((option) => typeof option === 'string') &&
-    item.options.includes(item.answer) && typeof item.completed === 'boolean';
-}
-
-function isSavedProject(item) {
-  return isRecord(item) && Number.isFinite(item.id) && typeof item.title === 'string' &&
-    typeof item.description === 'string' && Array.isArray(item.stack) &&
-    item.stack.every((tag) => typeof tag === 'string') &&
-    ['Not started', 'In progress', 'Completed'].includes(item.status) &&
-    Number.isFinite(item.progress) && item.progress >= 0 && item.progress <= 100 &&
-    typeof item.icon === 'string' && typeof item.color === 'string';
-}
-
-function isSavedTask(item) {
-  return isRecord(item) && (Number.isFinite(item.id) || typeof item.id === 'string') &&
-    typeof item.title === 'string' && typeof item.detail === 'string' && typeof item.done === 'boolean';
-}
-
-function isDateKey(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = value.split('-').map(Number);
-  const date = new Date(year, month - 1, day);
-  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
-}
-
-function isSavedLifeEvent(item) {
-  return isRecord(item) && (Number.isFinite(item.id) || typeof item.id === 'string') &&
-    typeof item.title === 'string' && isDateKey(item.date) && typeof item.category === 'string' &&
-    typeof item.notes === 'string';
-}
-
-function isRecord(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function isProgressBackup(value) {
-  if (!isRecord(value) || value.version !== 1 || !isRecord(value.data)) return false;
-  const { courses, challenges, projects, tasks, activityDates, lifeEvents, profileName, theme } = value.data;
-  const boundedList = (items, validator, limit = 2000) =>
-    Array.isArray(items) && items.length <= limit && items.every(validator);
-
-  return boundedList(courses, isSavedCourse) &&
-    boundedList(challenges, isSavedChallenge) &&
-    boundedList(projects, isSavedProject) &&
-    boundedList(tasks, isSavedTask) &&
-    boundedList(activityDates, isDateKey) &&
-    boundedList(lifeEvents, isSavedLifeEvent) &&
-    typeof profileName === 'string' && profileName.length <= 40 &&
-    ['dark', 'light'].includes(theme);
 }
 
 function ProgressBar({ value, color = 'blue' }) {
@@ -274,7 +217,10 @@ function App() {
         setShowNotifications(false);
       }
 
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+      const target = event.target;
+      const isEditingText = target instanceof HTMLElement &&
+        (target.isContentEditable || target.matches('input, textarea, select'));
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k' && !isEditingText) {
         event.preventDefault();
         setMobileSearchOpen(true);
         searchInputRef.current?.focus();
@@ -319,13 +265,13 @@ function App() {
 
     return [
       ...courses.filter((item) => `${item.name} ${item.category}`.toLowerCase().includes(normalizedQuery))
-        .map((item) => ({ title: item.name, detail: `Learning path · ${item.category}`, page: 'Learning Paths' })),
+        .map((item) => ({ id: `course-${item.id}`, title: item.name, detail: `Learning path · ${item.category}`, page: 'Learning Paths' })),
       ...challenges.filter((item) => `${item.title} ${item.topic} ${item.difficulty}`.toLowerCase().includes(normalizedQuery))
-        .map((item) => ({ title: item.title, detail: `Challenge · ${item.topic}`, page: 'Challenges' })),
+        .map((item) => ({ id: `challenge-${item.id}`, title: item.title, detail: `Challenge · ${item.topic}`, page: 'Challenges' })),
       ...projects.filter((item) => `${item.title} ${item.description} ${item.stack.join(' ')}`.toLowerCase().includes(normalizedQuery))
-        .map((item) => ({ title: item.title, detail: `Project · ${item.status}`, page: 'My Projects' })),
+        .map((item) => ({ id: `project-${item.id}`, title: item.title, detail: `Project · ${item.status}`, page: 'My Projects' })),
       ...lifeEvents.filter((item) => `${item.title} ${item.category} ${item.notes}`.toLowerCase().includes(normalizedQuery))
-        .map((item) => ({ title: item.title, detail: `Milestone · ${item.category}`, page: 'Life Timeline' })),
+        .map((item) => ({ id: `milestone-${item.id}`, title: item.title, detail: `Milestone · ${item.category}`, page: 'Life Timeline' })),
     ].slice(0, 7);
   }, [query, courses, challenges, projects, lifeEvents]);
 
@@ -443,7 +389,7 @@ function App() {
     event.preventDefault();
     if (!newTask.trim()) return;
     setTasks((previous) => [...previous, {
-      id: Date.now(),
+      id: createLocalId(),
       title: newTask.trim(),
       detail: 'Personal goal',
       done: false,
@@ -463,7 +409,7 @@ function App() {
     const colors = ['blue', 'green', 'purple', 'orange'];
     const stack = newProjectStack.split(',').map((item) => item.trim()).filter(Boolean);
     setProjects((previous) => [...previous, {
-      id: Date.now(),
+      id: createLocalId(),
       title,
       description: newProjectDescription.trim() || 'A new project in your portfolio.',
       stack,
@@ -535,8 +481,7 @@ function App() {
         item.id === editingLifeEventId ? { ...item, ...entry } : item
       ));
     } else {
-      const id = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      setLifeEvents((previous) => [...previous, { id, ...entry }]);
+      setLifeEvents((previous) => [...previous, { id: createLocalId(), ...entry }]);
     }
 
     resetLifeEventForm();
@@ -555,6 +500,7 @@ function App() {
     const focusTasks = [...tasks]
       .sort((first, second) => Number(first.done) - Number(second.done))
       .slice(0, 4);
+    const dashboardCourses = courses.filter((course) => course.progress < 100).slice(0, 3);
 
     return (
       <>
@@ -592,11 +538,11 @@ function App() {
 
         <section className="content-section">
           <SectionHeading eyebrow="KEEP MOVING FORWARD" title="Continue learning" description="Pick up where you left off." action="All learning paths" onAction={() => navigate('Learning Paths')} />
-          <div className="course-grid">
-            {courses.filter((course) => course.progress > 0 && course.progress < 100).slice(0, 3).map((course) => (
+          {dashboardCourses.length ? <div className="course-grid">
+            {dashboardCourses.map((course) => (
               <CourseCard key={course.id} course={course} onContinue={() => completeLesson(course.id)} />
             ))}
-          </div>
+          </div> : <EmptyState title="Every learning path is complete" detail="Start a project to put your new skills into practice." />}
         </section>
 
         <div className="dashboard-lower">
@@ -754,6 +700,7 @@ function App() {
           <div className="task-list">
             {tasks.map((task) => <div className="task-row" key={task.id}><label className={`task-item ${task.done ? 'task-done' : ''}`}><input type="checkbox" checked={task.done} onChange={() => toggleTask(task.id)} /><span className="custom-check">{task.done ? '✓' : ''}</span><span className="task-copy"><strong>{task.title}</strong><small>{task.detail}</small></span></label><button className="task-remove" type="button" aria-label={`Remove ${task.title}`} title="Remove task" onClick={() => removeTask(task.id)}>×</button></div>)}
           </div>
+          {!tasks.length && <EmptyState title="No daily goals yet" detail="Add a small learning goal to start building a routine." />}
         </section>
       </section>
     );
@@ -913,6 +860,7 @@ function App() {
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">Skip to content</a>
       {mobileMenu && <button className="mobile-scrim" aria-label="Close menu" onClick={() => setMobileMenu(false)} />}
       <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}>
         <button className="brand" onClick={() => navigate('Dashboard')} aria-label="MhruPath home"><span className="brand-mark">M<span>.</span></span><span className="brand-copy">Mhru<span>Path</span><small>YOUR DEVELOPER JOURNEY</small></span></button>
@@ -924,7 +872,7 @@ function App() {
         <div className="sidebar-bottom"><div className="daily-goal"><div className="goal-icon">✦</div><strong>Small steps, big goals.</strong><p>Every line of code is progress.</p><ProgressBar value={tasks.length ? completedTasks / tasks.length * 100 : 0} /><small>{completedTasks}/{tasks.length} daily tasks done</small></div><button className={`nav-item ${page === 'Settings' ? 'active' : ''}`} onClick={() => navigate('Settings')}><span className="nav-icon">⚙</span>Settings</button><div className="sidebar-version">MHRUPATH · LEARN BY BUILDING</div></div>
       </aside>
 
-      <main className="main-area">
+      <main className="main-area" id="main-content">
         <header className="topbar">
           <div className="topbar-left"><button className="mobile-menu-button" aria-expanded={mobileMenu} aria-controls="primary-navigation" onClick={() => setMobileMenu(!mobileMenu)} aria-label={mobileMenu ? 'Close navigation menu' : 'Open navigation menu'}>☰</button><div><div className="breadcrumb">Workspace <span>/</span> {page}</div><p className="topbar-subtitle">{pageDescriptions[page]}</p></div></div>
           <div className="topbar-actions">
@@ -953,7 +901,7 @@ function App() {
                       role="option"
                       aria-selected="false"
                       className="search-result"
-                      key={`${result.page}-${result.title}`}
+                      key={result.id}
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => openSearchResult(result)}
                     >
