@@ -169,32 +169,17 @@ function isRecord(value) {
 function isProgressBackup(value) {
   if (!isRecord(value) || value.version !== 1 || !isRecord(value.data)) return false;
   const { courses, challenges, projects, tasks, activityDates, lifeEvents, profileName, theme } = value.data;
-  const isString = (item) => typeof item === 'string';
-  const isArrayOfStrings = (items) => Array.isArray(items) && items.every(isString);
-  const isProgress = (item) => Number.isFinite(item) && item >= 0 && item <= 100;
+  const boundedList = (items, validator, limit = 2000) =>
+    Array.isArray(items) && items.length <= limit && items.every(validator);
 
-  return Array.isArray(courses) && courses.every((item) =>
-    isRecord(item) && typeof item.id === 'number' && isString(item.name) &&
-    isString(item.category) && isString(item.level) && isProgress(item.progress) &&
-    /^\d+\/\d+$/.test(item.lessons) && isString(item.color) && isString(item.icon)
-  ) && Array.isArray(challenges) && challenges.every((item) =>
-    isRecord(item) && typeof item.id === 'number' && isString(item.title) &&
-    isString(item.topic) && isString(item.difficulty) && Number.isFinite(item.points) && item.points >= 0 &&
-    isString(item.question) && isArrayOfStrings(item.options) && isString(item.answer) &&
-    item.options.includes(item.answer) && typeof item.completed === 'boolean'
-  ) && Array.isArray(projects) && projects.every((item) =>
-    isRecord(item) && typeof item.id === 'number' && isString(item.title) &&
-    isString(item.description) && isArrayOfStrings(item.stack) &&
-    ['Not started', 'In progress', 'Completed'].includes(item.status) &&
-    isProgress(item.progress) && isString(item.icon) && isString(item.color)
-  ) && Array.isArray(tasks) && tasks.every((item) =>
-    isRecord(item) && (typeof item.id === 'number' || isString(item.id)) &&
-    isString(item.title) && isString(item.detail) && typeof item.done === 'boolean'
-  ) && isArrayOfStrings(activityDates) && Array.isArray(lifeEvents) && lifeEvents.every((item) =>
-    isRecord(item) && (typeof item.id === 'number' || isString(item.id)) &&
-    isString(item.title) && /^\d{4}-\d{2}-\d{2}$/.test(item.date) &&
-    isString(item.category) && isString(item.notes)
-  ) && isString(profileName) && ['dark', 'light'].includes(theme);
+  return boundedList(courses, isSavedCourse) &&
+    boundedList(challenges, isSavedChallenge) &&
+    boundedList(projects, isSavedProject) &&
+    boundedList(tasks, isSavedTask) &&
+    boundedList(activityDates, isDateKey) &&
+    boundedList(lifeEvents, isSavedLifeEvent) &&
+    typeof profileName === 'string' && profileName.length <= 40 &&
+    ['dark', 'light'].includes(theme);
 }
 
 function ProgressBar({ value, color = 'blue' }) {
@@ -220,7 +205,10 @@ function SectionHeading({ eyebrow, title, description, action, onAction }) {
 
 function App() {
   const [page, setPage] = useState('Dashboard');
-  const [theme, setTheme] = useState(() => readSaved('theme', 'dark'));
+  const [theme, setTheme] = useState(() => {
+    const savedTheme = readSaved('theme', 'dark');
+    return ['dark', 'light'].includes(savedTheme) ? savedTheme : 'dark';
+  });
   const [courses, setCourses] = useState(() => readSavedList('courses', initialCourses, isSavedCourse));
   const [challenges, setChallenges] = useState(() => readSavedList('challenges', initialChallenges, isSavedChallenge));
   const [projects, setProjects] = useState(() => readSavedList('projects', initialProjects, isSavedProject));
@@ -238,7 +226,10 @@ function App() {
   const [feedback, setFeedback] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [profileName, setProfileName] = useState(() => readSaved('name', 'Developer'));
+  const [profileName, setProfileName] = useState(() => {
+    const savedName = readSaved('name', 'Developer');
+    return typeof savedName === 'string' ? savedName.slice(0, 40) : 'Developer';
+  });
   const [newTask, setNewTask] = useState('');
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [newProjectTitle, setNewProjectTitle] = useState('');
