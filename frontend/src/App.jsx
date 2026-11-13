@@ -270,6 +270,7 @@ function App() {
       if (event.key === 'Escape') {
         setMobileMenu(false);
         setMobileSearchOpen(false);
+        setSearchFocused(false);
         setShowNotifications(false);
       }
 
@@ -475,6 +476,13 @@ function App() {
     setNewProjectDescription('');
     setNewProjectStack('');
     setShowProjectForm(false);
+  }
+
+  function closeProjectForm() {
+    setShowProjectForm(false);
+    setNewProjectTitle('');
+    setNewProjectDescription('');
+    setNewProjectStack('');
   }
 
   function updateProjectStatus(project) {
@@ -695,7 +703,7 @@ function App() {
   function renderProjects() {
     return (
       <section className="content-section page-section">
-        <SectionHeading eyebrow="BUILD YOUR PORTFOLIO" title="My projects" description="Apply your knowledge by building useful applications." action={showProjectForm ? 'Cancel' : 'New project'} onAction={() => setShowProjectForm(!showProjectForm)} />
+        <SectionHeading eyebrow="BUILD YOUR PORTFOLIO" title="My projects" description="Apply your knowledge by building useful applications." action={showProjectForm ? 'Cancel' : 'New project'} onAction={() => showProjectForm ? closeProjectForm() : setShowProjectForm(true)} />
         {showProjectForm && (
           <form className="new-project-form panel" onSubmit={addProject}>
             <div className="new-project-form-heading"><span className="eyebrow">START SOMETHING NEW</span><h3>Create a project</h3></div>
@@ -712,7 +720,7 @@ function App() {
               <input maxLength={100} value={newProjectStack} onChange={(event) => setNewProjectStack(event.target.value)} placeholder="React, Node.js, CSS" />
             </label>
             <div className="new-project-form-actions">
-              <button className="secondary-button" type="button" onClick={() => setShowProjectForm(false)}>Cancel</button>
+              <button className="secondary-button" type="button" onClick={closeProjectForm}>Cancel</button>
               <button className="primary-button" type="submit">Create project <span>→</span></button>
             </div>
           </form>
