@@ -129,10 +129,10 @@ function isProgressBackup(value) {
   return Array.isArray(courses) && courses.every((item) =>
     isRecord(item) && typeof item.id === 'number' && isString(item.name) &&
     isString(item.category) && isString(item.level) && isProgress(item.progress) &&
-    isString(item.lessons) && isString(item.color) && isString(item.icon)
+    /^\d+\/\d+$/.test(item.lessons) && isString(item.color) && isString(item.icon)
   ) && Array.isArray(challenges) && challenges.every((item) =>
     isRecord(item) && typeof item.id === 'number' && isString(item.title) &&
-    isString(item.topic) && isString(item.difficulty) && typeof item.points === 'number' &&
+    isString(item.topic) && isString(item.difficulty) && Number.isFinite(item.points) && item.points >= 0 &&
     isString(item.question) && isArrayOfStrings(item.options) && isString(item.answer) &&
     item.options.includes(item.answer) && typeof item.completed === 'boolean'
   ) && Array.isArray(projects) && projects.every((item) =>
@@ -247,7 +247,9 @@ function App() {
 
   const completedChallenges = challenges.filter((item) => item.completed).length;
   const completedTasks = tasks.filter((task) => task.done).length;
-  const averageProgress = Math.round(courses.reduce((sum, course) => sum + course.progress, 0) / courses.length);
+  const averageProgress = courses.length
+    ? Math.round(courses.reduce((sum, course) => sum + course.progress, 0) / courses.length)
+    : 0;
   const earnedPoints = challenges.filter((item) => item.completed).reduce((sum, item) => sum + item.points, 0);
   const completedLessons = courses.reduce((sum, course) => sum + Number(course.lessons.split('/')[0]), 0);
 
@@ -299,6 +301,11 @@ function App() {
     if (!file) return;
 
     try {
+      if (file.size > 5 * 1024 * 1024) {
+        setSettingsFeedback('This backup is too large. Choose a file under 5 MB.');
+        return;
+      }
+
       const backup = JSON.parse(await file.text());
       if (!isProgressBackup(backup)) {
         setSettingsFeedback('This file is not a valid MhruPath progress backup.');
@@ -846,7 +853,7 @@ function App() {
             <label className={`search-box ${mobileSearchOpen ? 'search-open' : ''}`}><span aria-hidden="true">⌕</span><input ref={searchInputRef} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this section..." aria-label="Search courses, challenges, projects, and milestones" /><kbd>⌕</kbd></label>
             <button type="button" className="icon-button mobile-search-button" aria-label={mobileSearchOpen ? 'Close search' : 'Open search'} aria-expanded={mobileSearchOpen} onClick={() => { setMobileSearchOpen(!mobileSearchOpen); if (!mobileSearchOpen) window.setTimeout(() => searchInputRef.current?.focus(), 0); }}>⌕</button>
             <button className="icon-button" aria-label="Toggle theme" title="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? '☼' : '☾'}</button>
-            <div className="notification-wrap"><button className="icon-button notification-button" aria-label="Notifications" onClick={() => setShowNotifications(!showNotifications)}>♧<span className="notification-dot" /></button>{showNotifications && <div className="notification-popover"><strong>You're all caught up!</strong><p className="muted">Keep going with your next lesson or coding challenge.</p><button className="text-button" onClick={() => { setShowNotifications(false); navigate('Challenges'); }}>Practice now →</button></div>}</div>
+            <div className="notification-wrap"><button className="icon-button notification-button" aria-label="Notifications" aria-expanded={showNotifications} onClick={() => setShowNotifications(!showNotifications)}>♧</button>{showNotifications && <div className="notification-popover"><strong>You're all caught up!</strong><p className="muted">Keep going with your next lesson or coding challenge.</p><button className="text-button" onClick={() => { setShowNotifications(false); navigate('Challenges'); }}>Practice now →</button></div>}</div>
             <button className="top-avatar" onClick={() => navigate('Settings')} title="Profile settings">{profileName.slice(0, 1).toUpperCase() || 'D'}</button>
           </div>
         </header>
