@@ -44,6 +44,8 @@ MhruPath/
 │   │   ├── App.jsx        # App state, views, and interactions
 │   │   ├── App.css        # Component and responsive styles
 │   │   ├── index.css      # Theme tokens and global styles
+│   │   ├── progress.js    # Local progress and backup validation
+│   │   ├── progress.test.js # Progress validation tests
 │   │   └── main.jsx       # React entry point
 │   ├── index.html
 │   ├── package.json
@@ -105,6 +107,7 @@ From `frontend/`:
 
 ```bash
 npm run lint
+npm test
 npm run build
 npm run preview
 ```
@@ -116,7 +119,7 @@ npm test
 npm start
 ```
 
-The API test suite uses Node's built-in test runner. Then open `http://localhost:5000/api/health` to check the running API.
+The frontend progress validation tests and backend API tests use Node's built-in test runner. Then open `http://localhost:5000/api/health` to check the running API.
 
 ## Screenshots
 
@@ -124,7 +127,7 @@ No screenshots are included yet. Add current desktop and mobile screenshots here
 
 ## Future improvements
 
-- Add automated tests for learning flows, import validation, and API responses.
+- Add browser-level tests for interactive learning flows and responsive layouts.
 - Add an authenticated, persistent data model if cross-device progress is needed.
 - Connect community and leaderboard views to real shared data before presenting them as live features.
 - Add an API integration only when backend-backed functionality is introduced.
