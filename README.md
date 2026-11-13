@@ -30,6 +30,8 @@ The leaderboard entries are sample data. Community content is informational; Mhr
 
 The frontend is a React single-page application. It reads and writes progress locally using namespaced `mhrupath-*` local-storage keys. The Express backend provides a root status response and an API health endpoint; the frontend does not currently depend on the backend for its learning features.
 
+Search filtering is deferred while the user types, and unchanged cards and task rows are memoized to reduce avoidable rendering. The dashboard date refresh is scheduled for local midnight rather than polling continuously.
+
 ```text
 MhruPath/
 ├── backend/

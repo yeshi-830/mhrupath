@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { isDateKey, isProgressBackup, isSavedChallenge, isSavedCourse, isSavedLifeEvent, isSavedProject, isSavedTask } from './progress.js';
 import './App.css';
 
@@ -125,13 +125,13 @@ function readSavedList(key, fallback, isValidItem) {
   return Array.isArray(value) ? value.filter(isValidItem) : fallback;
 }
 
-function ProgressBar({ value, color = 'blue' }) {
+const ProgressBar = memo(function ProgressBar({ value, color = 'blue' }) {
   return (
     <div className="progress-track" role="progressbar" aria-valuenow={value} aria-valuemin="0" aria-valuemax="100">
       <div className={`progress-fill ${color}`} style={{ width: `${value}%` }} />
     </div>
   );
-}
+});
 
 function SectionHeading({ eyebrow, title, description, action, onAction }) {
   return (
@@ -161,6 +161,7 @@ function App() {
   const [todayKey, setTodayKey] = useState(getTodayKey);
   const [todayDisplay, setTodayDisplay] = useState(getTodayDisplay);
   const [query, setQuery] = useState('');
+  const deferredQuery = useDeferredValue(query);
   const [searchFocused, setSearchFocused] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [category, setCategory] = useState('All');
@@ -187,6 +188,8 @@ function App() {
   const [settingsFeedback, setSettingsFeedback] = useState('');
   const searchInputRef = useRef(null);
   const backupInputRef = useRef(null);
+  const coursesRef = useRef(courses);
+  const tasksRef = useRef(tasks);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -197,15 +200,34 @@ function App() {
   useEffect(() => saveValue('challenges', challenges), [challenges]);
   useEffect(() => saveValue('projects', projects), [projects]);
   useEffect(() => saveValue('tasks', tasks), [tasks]);
+  useEffect(() => { coursesRef.current = courses; }, [courses]);
+  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
   useEffect(() => saveValue('activity-dates', activityDates), [activityDates]);
   useEffect(() => saveValue('life-events', lifeEvents), [lifeEvents]);
-  useEffect(() => saveValue('name', profileName), [profileName]);
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setTodayKey(getTodayKey());
-      setTodayDisplay(getTodayDisplay());
-    }, 60_000);
-    return () => window.clearInterval(intervalId);
+    const timeoutId = window.setTimeout(() => saveValue('name', profileName), 200);
+    return () => window.clearTimeout(timeoutId);
+  }, [profileName]);
+  useEffect(() => {
+    let timeoutId;
+    let isActive = true;
+
+    function scheduleNextDay() {
+      const now = new Date();
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      timeoutId = window.setTimeout(() => {
+        if (!isActive) return;
+        setTodayKey(getTodayKey());
+        setTodayDisplay(getTodayDisplay());
+        scheduleNextDay();
+      }, Math.max(1, nextMidnight.getTime() - now.getTime()));
+    }
+
+    scheduleNextDay();
+    return () => {
+      isActive = false;
+      window.clearTimeout(timeoutId);
+    };
   }, []);
 
   useEffect(() => {
@@ -231,36 +253,41 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const completedChallenges = challenges.filter((item) => item.completed).length;
-  const completedTasks = tasks.filter((task) => task.done).length;
-  const pendingTasks = tasks.filter((task) => !task.done).length;
-  const availableChallenges = challenges.filter((item) => !item.completed).length;
-  const averageProgress = courses.length
+  const completedChallenges = useMemo(() => challenges.filter((item) => item.completed).length, [challenges]);
+  const completedTasks = useMemo(() => tasks.filter((task) => task.done).length, [tasks]);
+  const pendingTasks = useMemo(() => tasks.length - completedTasks, [tasks.length, completedTasks]);
+  const availableChallenges = useMemo(() => challenges.length - completedChallenges, [challenges.length, completedChallenges]);
+  const averageProgress = useMemo(() => courses.length
     ? Math.round(courses.reduce((sum, course) => sum + course.progress, 0) / courses.length)
-    : 0;
-  const earnedPoints = challenges.filter((item) => item.completed).reduce((sum, item) => sum + item.points, 0);
-  const completedLessons = courses.reduce((sum, course) => sum + Number(course.lessons.split('/')[0]), 0);
+    : 0, [courses]);
+  const earnedPoints = useMemo(() => challenges.reduce((sum, item) => sum + (item.completed ? item.points : 0), 0), [challenges]);
+  const completedLessons = useMemo(() => courses.reduce((sum, course) => sum + Number(course.lessons.split('/')[0]), 0), [courses]);
+  const activeLearningPaths = useMemo(() => courses.filter((course) => course.progress > 0 && course.progress < 100).length, [courses]);
+  const focusTasks = useMemo(() => [...tasks].sort((first, second) => Number(first.done) - Number(second.done)).slice(0, 4), [tasks]);
+  const dashboardCourses = useMemo(() => courses.filter((course) => course.progress < 100).slice(0, 3), [courses]);
+  const nextCourse = useMemo(() => courses.filter((course) => course.progress < 100)
+    .sort((first, second) => second.progress - first.progress)[0], [courses]);
 
   const filteredCourses = useMemo(() => courses.filter((course) => {
-    const matchesQuery = `${course.name} ${course.category}`.toLowerCase().includes(query.toLowerCase());
+    const matchesQuery = `${course.name} ${course.category}`.toLowerCase().includes(deferredQuery.toLowerCase());
     const matchesCategory = category === 'All' || course.category === category;
     return matchesQuery && matchesCategory;
-  }), [courses, query, category]);
+  }), [courses, deferredQuery, category]);
 
   const filteredChallenges = useMemo(() => challenges.filter((item) =>
-    `${item.title} ${item.topic} ${item.difficulty}`.toLowerCase().includes(query.toLowerCase())
-  ), [challenges, query]);
+    `${item.title} ${item.topic} ${item.difficulty}`.toLowerCase().includes(deferredQuery.toLowerCase())
+  ), [challenges, deferredQuery]);
 
   const filteredProjects = useMemo(() => projects.filter((item) =>
-    `${item.title} ${item.description} ${item.stack.join(' ')}`.toLowerCase().includes(query.toLowerCase())
-  ), [projects, query]);
+    `${item.title} ${item.description} ${item.stack.join(' ')}`.toLowerCase().includes(deferredQuery.toLowerCase())
+  ), [projects, deferredQuery]);
 
   const filteredLifeEvents = useMemo(() => lifeEvents.filter((item) =>
-    `${item.title} ${item.category} ${item.notes}`.toLowerCase().includes(query.toLowerCase())
-  ), [lifeEvents, query]);
+    `${item.title} ${item.category} ${item.notes}`.toLowerCase().includes(deferredQuery.toLowerCase())
+  ), [lifeEvents, deferredQuery]);
 
   const globalSearchResults = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedQuery = deferredQuery.trim().toLowerCase();
     if (!normalizedQuery) return [];
 
     return [
@@ -273,9 +300,9 @@ function App() {
       ...lifeEvents.filter((item) => `${item.title} ${item.category} ${item.notes}`.toLowerCase().includes(normalizedQuery))
         .map((item) => ({ id: `milestone-${item.id}`, title: item.title, detail: `Milestone · ${item.category}`, page: 'Life Timeline' })),
     ].slice(0, 7);
-  }, [query, courses, challenges, projects, lifeEvents]);
+  }, [deferredQuery, courses, challenges, projects, lifeEvents]);
 
-  function navigate(destination) {
+  const navigate = useCallback((destination) => {
     setPage(destination);
     setQuery('');
     setMobileMenu(false);
@@ -284,12 +311,13 @@ function App() {
     setActiveChallenge(null);
     setFeedback('');
     setSearchFocused(false);
-  }
+  }, []);
 
-  function openSearchResult(result) {
+  const openSearchResult = useCallback((result) => {
     navigate(result.page);
     setQuery(result.title);
-  }
+  }, [navigate]);
+  const goToProjects = useCallback(() => navigate('My Projects'), [navigate]);
 
   function exportProgress() {
     const backup = {
@@ -340,19 +368,19 @@ function App() {
     }
   }
 
-  function toggleTask(id) {
-    const task = tasks.find((item) => item.id === id);
-    if (task && !task.done) recordActivity();
-    setTasks((previous) => previous.map((task) => task.id === id ? { ...task, done: !task.done } : task));
-  }
-
-  function recordActivity() {
+  const recordActivity = useCallback(() => {
     const today = getTodayKey();
     setActivityDates((previous) => previous.includes(today) ? previous : [...previous, today]);
-  }
+  }, []);
 
-  function completeLesson(courseId) {
-    const course = courses.find((item) => item.id === courseId);
+  const toggleTask = useCallback((id) => {
+    const task = tasksRef.current.find((item) => item.id === id);
+    if (task && !task.done) recordActivity();
+    setTasks((previous) => previous.map((task) => task.id === id ? { ...task, done: !task.done } : task));
+  }, [recordActivity]);
+
+  const completeLesson = useCallback((courseId) => {
+    const course = coursesRef.current.find((item) => item.id === courseId);
     if (!course || course.progress >= 100) return;
     recordActivity();
     setCourses((previous) => previous.map((course) => {
@@ -361,7 +389,7 @@ function App() {
       const done = Math.round(nextProgress / 5);
       return { ...course, progress: nextProgress, lessons: `${Math.min(20, done)}/20` };
     }));
-  }
+  }, [recordActivity]);
 
   function startChallenge(challenge) {
     setActiveChallenge(challenge);
@@ -397,9 +425,9 @@ function App() {
     setNewTask('');
   }
 
-  function removeTask(id) {
+  const removeTask = useCallback((id) => {
     setTasks((previous) => previous.filter((task) => task.id !== id));
-  }
+  }, []);
 
   function addProject(event) {
     event.preventDefault();
@@ -431,7 +459,7 @@ function App() {
     setNewProjectStack('');
   }
 
-  function updateProjectStatus(project) {
+  const updateProjectStatus = useCallback((project) => {
     const next = project.status === 'Not started'
       ? 'In progress'
       : project.status === 'In progress'
@@ -444,7 +472,7 @@ function App() {
         : item
     ));
     if (next === 'Completed') recordActivity();
-  }
+  }, [recordActivity]);
 
   function resetLifeEventForm() {
     setShowLifeEventForm(false);
@@ -494,14 +522,6 @@ function App() {
   }
 
   function renderDashboard() {
-    const nextCourse = courses
-      .filter((course) => course.progress < 100)
-      .sort((first, second) => second.progress - first.progress)[0];
-    const focusTasks = [...tasks]
-      .sort((first, second) => Number(first.done) - Number(second.done))
-      .slice(0, 4);
-    const dashboardCourses = courses.filter((course) => course.progress < 100).slice(0, 3);
-
     return (
       <>
         <section className="welcome-banner">
@@ -528,7 +548,7 @@ function App() {
         </section>
 
         <div className="stats-grid">
-          <StatCard icon="◫" label="Learning paths" value={courses.filter((c) => c.progress > 0 && c.progress < 100).length} note={`${courses.length} available`} color="blue" />
+          <StatCard icon="◫" label="Learning paths" value={activeLearningPaths} note={`${courses.length} available`} color="blue" />
           <StatCard icon="✓" label="Lessons completed" value={completedLessons} note="Across all courses" color="green" />
           <StatCard icon="⌘" label="Challenges solved" value={completedChallenges} note={`${challenges.length} available`} color="purple" />
           <StatCard icon="✧" label="Points earned" value={earnedPoints} note="Keep earning more" color="orange" />
@@ -540,7 +560,7 @@ function App() {
           <SectionHeading eyebrow="KEEP MOVING FORWARD" title="Continue learning" description="Pick up where you left off." action="All learning paths" onAction={() => navigate('Learning Paths')} />
           {dashboardCourses.length ? <div className="course-grid">
             {dashboardCourses.map((course) => (
-              <CourseCard key={course.id} course={course} onContinue={() => completeLesson(course.id)} />
+              <CourseCard key={course.id} course={course} onContinue={completeLesson} />
             ))}
           </div> : <EmptyState title="Every learning path is complete" detail="Start a project to put your new skills into practice." />}
         </section>
@@ -549,18 +569,7 @@ function App() {
           <section className="panel">
             <SectionHeading eyebrow="STAY ON TRACK" title="Today's focus" description={`${completedTasks} of ${tasks.length} tasks completed`} action="All tasks" onAction={() => navigate('My Progress')} />
             <div className="focus-progress"><ProgressBar value={tasks.length ? Math.round(completedTasks / tasks.length * 100) : 0} /><span>{tasks.length ? Math.round(completedTasks / tasks.length * 100) : 0}%</span></div>
-            <div className="task-list">
-              {focusTasks.map((task) => (
-                <div className="task-row" key={task.id}>
-                  <label className={`task-item ${task.done ? 'task-done' : ''}`}>
-                    <input type="checkbox" checked={task.done} onChange={() => toggleTask(task.id)} />
-                    <span className="custom-check">{task.done ? '✓' : ''}</span>
-                    <span className="task-copy"><strong>{task.title}</strong><small>{task.detail}</small></span>
-                  </label>
-                  <button className="task-remove" type="button" aria-label={`Remove ${task.title}`} title="Remove task" onClick={() => removeTask(task.id)}>×</button>
-                </div>
-              ))}
-            </div>
+            <DailyTaskList tasks={focusTasks} onToggle={toggleTask} onRemove={removeTask} />
             {!tasks.length && <p className="muted small-text">Add a small goal to get your day started.</p>}
             <form className="quick-task-form" onSubmit={addTask}>
               <input value={newTask} onChange={(event) => setNewTask(event.target.value)} placeholder="Add a quick task..." aria-label="New focus task" maxLength={120} required />
@@ -581,7 +590,7 @@ function App() {
           </section>
         </div>
 
-        <ProjectWorkspace projects={projects} onUpdate={updateProjectStatus} onViewAll={() => navigate('My Projects')} />
+        <ProjectWorkspace projects={projects} onUpdate={updateProjectStatus} onViewAll={goToProjects} />
       </>
     );
   }
@@ -598,7 +607,7 @@ function App() {
           <span className="muted small-text">{filteredCourses.length} paths</span>
         </div>
         {filteredCourses.length ? <div className="course-grid course-grid-wide">
-          {filteredCourses.map((course) => <CourseCard key={course.id} course={course} onContinue={() => completeLesson(course.id)} />)}
+          {filteredCourses.map((course) => <CourseCard key={course.id} course={course} onContinue={completeLesson} />)}
         </div> : <EmptyState title="No learning paths found" detail="Try another search or category." />}
         <div className="tip-panel"><span>✦</span><div><strong>Learning tip</strong><p>Practice a little every day. Consistency helps you remember what you learn.</p></div></div>
       </section>
@@ -672,7 +681,7 @@ function App() {
           </form>
         )}
         <div className="project-grid project-grid-wide">
-          {filteredProjects.map((project) => <ProjectCard key={project.id} project={project} onUpdate={() => updateProjectStatus(project)} />)}
+          {filteredProjects.map((project) => <ProjectCard key={project.id} project={project} onUpdate={updateProjectStatus} />)}
         </div>
         {!filteredProjects.length && <EmptyState title="No projects found" detail="Try a different search." />}
         <p className="muted small-text">Project statuses are saved in your browser. These are starter projects; GitHub integration can be added later.</p>
@@ -697,9 +706,7 @@ function App() {
         <section className="panel">
           <SectionHeading title="Your daily focus" description="Keep your tasks manageable and celebrate your progress." />
           <form className="add-task-form" onSubmit={addTask}><input value={newTask} onChange={(event) => setNewTask(event.target.value)} placeholder="Add a learning goal..." aria-label="New learning goal" maxLength={120} required /><button className="primary-button" type="submit">+ Add task</button></form>
-          <div className="task-list">
-            {tasks.map((task) => <div className="task-row" key={task.id}><label className={`task-item ${task.done ? 'task-done' : ''}`}><input type="checkbox" checked={task.done} onChange={() => toggleTask(task.id)} /><span className="custom-check">{task.done ? '✓' : ''}</span><span className="task-copy"><strong>{task.title}</strong><small>{task.detail}</small></span></label><button className="task-remove" type="button" aria-label={`Remove ${task.title}`} title="Remove task" onClick={() => removeTask(task.id)}>×</button></div>)}
-          </div>
+          <DailyTaskList tasks={tasks} onToggle={toggleTask} onRemove={removeTask} />
           {!tasks.length && <EmptyState title="No daily goals yet" detail="Add a small learning goal to start building a routine." />}
         </section>
       </section>
@@ -818,7 +825,7 @@ function App() {
         <div className="panel settings-panel">
           <label className="settings-field">
             <span><strong>Display name</strong><small>This name appears in your dashboard and sample leaderboard.</small></span>
-            <input maxLength={40} value={profileName} onChange={(event) => setProfileName(event.target.value)} placeholder="Your name" />
+            <input maxLength={40} value={profileName} onChange={(event) => setProfileName(event.target.value)} onBlur={(event) => saveValue('name', event.currentTarget.value)} placeholder="Your name" />
           </label>
           <div className="settings-field">
             <span><strong>Appearance</strong><small>Choose a comfortable interface theme.</small></span>
@@ -940,11 +947,11 @@ function App() {
   );
 }
 
-function StatCard({ icon, label, value, note, color }) {
+const StatCard = memo(function StatCard({ icon, label, value, note, color }) {
   return <article className="stat-card"><div className={`stat-icon ${color}`}>{icon}</div><p className="stat-label">{label}</p><div className="stat-value">{value}</div><p className="stat-note"><span>↗</span> {note}</p></article>;
-}
+});
 
-function ProjectWorkspace({ projects, onUpdate, onViewAll }) {
+const ProjectWorkspace = memo(function ProjectWorkspace({ projects, onUpdate, onViewAll }) {
   const activeCount = projects.filter((project) => project.status === 'In progress').length;
   const completedCount = projects.filter((project) => project.status === 'Completed').length;
   const averageProgress = projects.length
@@ -995,9 +1002,9 @@ function ProjectWorkspace({ projects, onUpdate, onViewAll }) {
       )}
     </section>
   );
-}
+});
 
-function WeeklyActivity({ activityDates, todayKey }) {
+const WeeklyActivity = memo(function WeeklyActivity({ activityDates, todayKey }) {
   const week = getWeekDatesForKey(todayKey);
   const activeDates = new Set(activityDates);
   const activeDays = week.filter((day) => activeDates.has(day.key)).length;
@@ -1029,22 +1036,39 @@ function WeeklyActivity({ activityDates, todayKey }) {
       </div>
     </section>
   );
-}
+});
 
-function CourseCard({ course, onContinue }) {
-  return <article className="course-card"><div className="course-card-top"><span className={`course-icon ${course.color}`}>{course.icon}</span><span className={`level-badge ${course.level === 'Beginner' ? 'easy' : 'medium'}`}>{course.level}</span></div><p className="course-category">{course.category}</p><h3>{course.name}</h3><p className="course-meta">{course.lessons} lessons completed</p><div className="course-progress-label"><span>Progress</span><strong>{course.progress}%</strong></div><ProgressBar value={course.progress} color={course.color} /><button className="course-action" onClick={onContinue}>{course.progress === 100 ? 'Completed ✓' : course.progress === 0 ? 'Start learning' : 'Continue learning'} <span>→</span></button></article>;
-}
+const CourseCard = memo(function CourseCard({ course, onContinue }) {
+  return <article className="course-card"><div className="course-card-top"><span className={`course-icon ${course.color}`}>{course.icon}</span><span className={`level-badge ${course.level === 'Beginner' ? 'easy' : 'medium'}`}>{course.level}</span></div><p className="course-category">{course.category}</p><h3>{course.name}</h3><p className="course-meta">{course.lessons} lessons completed</p><div className="course-progress-label"><span>Progress</span><strong>{course.progress}%</strong></div><ProgressBar value={course.progress} color={course.color} /><button className="course-action" onClick={() => onContinue(course.id)}>{course.progress === 100 ? 'Completed ✓' : course.progress === 0 ? 'Start learning' : 'Continue learning'} <span>→</span></button></article>;
+});
 
-function ProjectCard({ project, onUpdate }) {
-  return <article className="project-card"><div className={`project-visual ${project.color}`}><span>{project.icon}</span><span className="project-visual-dots">✦ · ·</span></div><div className="project-card-body"><div className="project-heading"><h3>{project.title}</h3><span className={`project-status ${project.status === 'Completed' ? 'status-complete' : ''}`}>{project.status}</span></div><p>{project.description}</p><div className="tech-tags">{project.stack.map((tag) => <span key={tag}>{tag}</span>)}</div><div className="project-progress-heading"><span>Progress</span><strong>{project.progress}%</strong></div><ProgressBar value={project.progress} color={project.color} /><button className="course-action" onClick={onUpdate}>{project.status === 'Not started' ? 'Start project' : project.status === 'In progress' ? 'Mark completed' : 'Restart project'} <span>→</span></button></div></article>;
-}
+const ProjectCard = memo(function ProjectCard({ project, onUpdate }) {
+  return <article className="project-card"><div className={`project-visual ${project.color}`}><span>{project.icon}</span><span className="project-visual-dots">✦ · ·</span></div><div className="project-card-body"><div className="project-heading"><h3>{project.title}</h3><span className={`project-status ${project.status === 'Completed' ? 'status-complete' : ''}`}>{project.status}</span></div><p>{project.description}</p><div className="tech-tags">{project.stack.map((tag) => <span key={tag}>{tag}</span>)}</div><div className="project-progress-heading"><span>Progress</span><strong>{project.progress}%</strong></div><ProgressBar value={project.progress} color={project.color} /><button className="course-action" onClick={() => onUpdate(project)}>{project.status === 'Not started' ? 'Start project' : project.status === 'In progress' ? 'Mark completed' : 'Restart project'} <span>→</span></button></div></article>;
+});
 
-function CommunityCard({ icon, title, detail }) {
+const TaskRow = memo(function TaskRow({ task, onToggle, onRemove }) {
+  return (
+    <div className="task-row">
+      <label className={`task-item ${task.done ? 'task-done' : ''}`}>
+        <input type="checkbox" checked={task.done} onChange={() => onToggle(task.id)} />
+        <span className="custom-check">{task.done ? '✓' : ''}</span>
+        <span className="task-copy"><strong>{task.title}</strong><small>{task.detail}</small></span>
+      </label>
+      <button className="task-remove" type="button" aria-label={`Remove ${task.title}`} title="Remove task" onClick={() => onRemove(task.id)}>×</button>
+    </div>
+  );
+});
+
+const DailyTaskList = memo(function DailyTaskList({ tasks, onToggle, onRemove }) {
+  return <div className="task-list">{tasks.map((task) => <TaskRow key={task.id} task={task} onToggle={onToggle} onRemove={onRemove} />)}</div>;
+});
+
+const CommunityCard = memo(function CommunityCard({ icon, title, detail }) {
   return <article className="panel community-card"><span className="community-icon">{icon}</span><h3>{title}</h3><p className="muted">{detail}</p></article>;
-}
+});
 
-function EmptyState({ title, detail }) {
+const EmptyState = memo(function EmptyState({ title, detail }) {
   return <div className="empty-state"><span>⌕</span><h3>{title}</h3><p>{detail}</p></div>;
-}
+});
 
 export default App;
