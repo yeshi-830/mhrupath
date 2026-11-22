@@ -1071,4 +1071,4 @@ const EmptyState = memo(function EmptyState({ title, detail }) {
   return <div className="empty-state"><span>⌕</span><h3>{title}</h3><p>{detail}</p></div>;
 });
 
-export default App;
+export default  app;
