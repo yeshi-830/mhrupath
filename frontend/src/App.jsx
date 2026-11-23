@@ -1067,8 +1067,9 @@ const CommunityCard = memo(function CommunityCard({ icon, title, detail }) {
   return <article className="panel community-card"><span className="community-icon">{icon}</span><h3>{title}</h3><p className="muted">{detail}</p></article>;
 });
 
+
 const EmptyState = memo(function EmptyState({ title, detail }) {
   return <div className="empty-state"><span>⌕</span><h3>{title}</h3><p>{detail}</p></div>;
 });
 
-export default  app;
+export default App;
